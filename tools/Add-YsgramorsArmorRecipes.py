@@ -202,7 +202,15 @@ FLAG_INITIALLY_DISABLED = 0x00000800
 # The armour needs gating too, which is not obvious: it sits at the sarcophagus origin + 70,
 # ABOVE the closed lid's top surface (-1285.41), so ungated it would rest in plain sight on the
 # shut lid and be lootable before the questline had been touched.
-SKYRIM_ESM = r"C:\Modlists\Apostasy\Stock Game\Data\Skyrim.esm"
+# Skyrim.esm is read for vanilla records and the recipe-shape check. Discovered, not hard-coded
+# (rule 4): SKYRIM_ESM in the environment, else the first MO2 Stock Game or Steam copy found.
+_ESM_CANDIDATES = [
+    os.environ.get("SKYRIM_ESM", ""),
+    r"D:\modlists\Njordlinger\Stock Game\Data\Skyrim.esm",
+    r"C:\Modlists\Apostasy\Stock Game\Data\Skyrim.esm",
+    r"C:\SteamLibrary\steamapps\common\Skyrim Special Edition\Data\Skyrim.esm",
+]
+SKYRIM_ESM = next((c for c in _ESM_CANDIDATES if c and os.path.isfile(c)), _ESM_CANDIDATES[1])
 DRAUGR_RACE       = 0x00000D53   # RNAM of the corpse NPC we clone
 CORPSE_TEMPLATE   = 0x0005AFA6   # NPC_ TreasCorpseDraugrMale - the vanilla draugr corpse
 FLAG_STARTS_DEAD  = 0x00000200   # ACHR record flag; every vanilla corpse placement carries it

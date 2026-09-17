@@ -48,6 +48,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'tools\YsgramorsArmorTombGate.psc') -Des
 
 Write-Host "== documents"
 $readme = Get-Content -LiteralPath (Join-Path $repo 'README.md') -Raw
+$readme = [regex]::Replace($readme, '(?m)^Version \d+\.\d+\.\d+', "Version $Version")   # stamped from VERSION, never typed
 Set-Content -LiteralPath (Join-Path $out 'README.txt') -Value $readme -NoNewline -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $repo 'NOTICE.md') -Destination (Join-Path $out 'NOTICE.md')
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $out 'LICENSE-generator-GPL-3.0.txt')
