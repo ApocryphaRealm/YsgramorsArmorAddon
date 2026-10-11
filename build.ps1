@@ -41,7 +41,7 @@ Write-Host "== plugin"
 if ($LASTEXITCODE -ne 0) { throw "generator failed ($LASTEXITCODE)" }
 
 Write-Host "== script"
-$compile = 'D:\Claude output\.MD\scripts\compile-papyrus.ps1'
+$compile = "$(@(& py -3 'D:\Claude output\.MD\resolvers\resolve.py' find compile-papyrus)[0])".Trim()   # by role
 & powershell -NoProfile -ExecutionPolicy Bypass -File $compile -Source (Join-Path $repo 'tools\YsgramorsArmorTombGate.psc') -OutDir (Join-Path $out 'Scripts')
 if ($LASTEXITCODE -ne 0) { throw "script compile failed ($LASTEXITCODE)" }
 Copy-Item -LiteralPath (Join-Path $repo 'tools\YsgramorsArmorTombGate.psc') -Destination (Join-Path $out 'Source\Scripts\')
