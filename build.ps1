@@ -10,7 +10,8 @@ instances unless -SourcePlugin says otherwise; it is read, never written. The pa
 
     YsgramorsArmor.esp                      their plugin with our records added (tools\Add-YsgramorsArmorRecipes.py)
     Scripts\YsgramorsArmorTombQuest.pex     the tomb quest script, compiled by the Creation Kit's compiler
-    Source\Scripts\YsgramorsArmorTombQuest.psc
+    Scripts\YsgramorsArmorTombPlayer.pex    its player alias script - re-arms the quest's poll on every load
+    Source\Scripts\YsgramorsArmorTombQuest.psc, Source\Scripts\YsgramorsArmorTombPlayer.psc
     README.txt, NOTICE.md, LICENSE-generator-GPL-3.0.txt
 #>
 param(
@@ -33,18 +34,21 @@ if (-not $SourcePlugin) {
 }
 
 $out = Join-Path $OutRoot "Ysgramor's Armor addon $Version"
-if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Recurse -Force }
+# Never deleted here: an earlier package of this number is moved to .MD\backups first.
+if (Test-Path -LiteralPath $out) { throw "$out already exists - move it to backups first; this build never deletes a package" }
 New-Item -ItemType Directory -Force -Path $out, (Join-Path $out 'Scripts'), (Join-Path $out 'Source\Scripts') | Out-Null
 
 Write-Host "== plugin"
 & python (Join-Path $repo 'tools\Add-YsgramorsArmorRecipes.py') $SourcePlugin (Join-Path $out 'YsgramorsArmor.esp')
 if ($LASTEXITCODE -ne 0) { throw "generator failed ($LASTEXITCODE)" }
 
-Write-Host "== script"
+Write-Host "== scripts"
 $compile = "$(@(& py -3 'D:\Claude output\.MD\resolvers\resolve.py' find compile-papyrus)[0])".Trim()   # by role
-& powershell -NoProfile -ExecutionPolicy Bypass -File $compile -Source (Join-Path $repo 'tools\YsgramorsArmorTombQuest.psc') -OutDir (Join-Path $out 'Scripts')
-if ($LASTEXITCODE -ne 0) { throw "script compile failed ($LASTEXITCODE)" }
-Copy-Item -LiteralPath (Join-Path $repo 'tools\YsgramorsArmorTombQuest.psc') -Destination (Join-Path $out 'Source\Scripts\')
+foreach ($script in 'YsgramorsArmorTombQuest', 'YsgramorsArmorTombPlayer') {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $compile -Source (Join-Path $repo "tools\$script.psc") -OutDir (Join-Path $out 'Scripts')
+    if ($LASTEXITCODE -ne 0) { throw "script compile failed: $script ($LASTEXITCODE)" }
+    Copy-Item -LiteralPath (Join-Path $repo "tools\$script.psc") -Destination (Join-Path $out 'Source\Scripts\')
+}
 
 Write-Host "== documents"
 $readme = Get-Content -LiteralPath (Join-Path $repo 'README.md') -Raw

@@ -139,6 +139,8 @@ def cobj(formid: int, edid: str, ingredients, result: int, station: int, conditi
 #                                this file). Every few seconds: if Glory of the Dead (C06) is complete,
 #                                move the body into the sarcophagus once, and - while the player is
 #                                in the tomb - disable the lid and the cage with a fade.
+#                                Alias 0 "Player" (forced to PlayerRef) runs YsgramorsArmorTombPlayer,
+#                                whose OnPlayerLoadGame re-arms that poll on every load.
 #   CELL  AR_YsgramorHoldingCell an interior of the mod's OWN, never visited, no doors - where the
 #                                body waits. (The same shape as Simple Loadout System's storage cell.)
 #   ACHR  AR_YsgramorCorpseRef   the body: starts dead, persistent, initially disabled, with vanilla's
@@ -206,6 +208,9 @@ QUEST_SCRIPT     = b"YsgramorsArmorTombQuest"
 QUEST_EDID       = b"AR_YsgramorTombQuest\x00"
 HOLDING_EDID     = b"AR_YsgramorHoldingCell\x00"
 RETIRED_IDS      = (0x81B,)      # 1.0.1's AR_YsgramorTombGateMarker - never reused
+PLAYER_ALIAS_ID     = 0
+PLAYER_ALIAS_SCRIPT = b"YsgramorsArmorTombPlayer"   # YsgramorsArmorTombPlayer.psc beside this file
+PLAYER_REF          = 0x00000014                    # PlayerRef (Skyrim.esm)
 
 
 def wstr(s: bytes) -> bytes:
@@ -440,12 +445,29 @@ def build_tomb_quest(next_id: int, achr: bytes, achr_fid: int):
         (b"LidFormID",         "int",    LID_REF),
         (b"CageFormID",        "int",    CAGE_REF),
     ])
+    # The player alias (alias 0) carries the load hook: YsgramorsArmorTombPlayer's OnPlayerLoadGame
+    # re-arms the quest's poll on every load (a save written before OnInit armed it never polled -
+    # combined run B-20261025-041358-fe3f). A quest VMAD that has alias scripts continues after its
+    # scripts with the fragment block and then the alias block, in the layout vanilla writes for a
+    # quest with alias scripts and no fragments (DialogueKynesgrove 0x0002E6FF, WIThief01 0x00023EEB):
+    # int8 2, uint16 0 fragments, empty file name; uint16 alias count; per alias an objFormat-2
+    # object (uint16 0, int16 alias id, uint32 the quest's OWN form id), then version 5, objFormat 2
+    # and the alias's scripts.
+    vmad += struct.pack("<bH", 2, 0) + wstr(b"")
+    vmad += struct.pack("<H", 1)
+    vmad += struct.pack("<HhI", 0, PLAYER_ALIAS_ID, 0x04000000 | quest_id)
+    vmad += struct.pack("<hhH", 5, 2, 1) + wstr(PLAYER_ALIAS_SCRIPT) + struct.pack("<BH", 0, 0)
     # DNAM in vanilla DialogueGeneric's shape: flags 0x0011 (Start Game Enabled | Starts Enabled),
-    # priority 0, form version byte 0, unknown 0, type 0 (none). NEXT and ANAM close the record as
-    # they do in every vanilla quest with no aliases.
+    # priority 0, form version byte 0, unknown 0, type 0 (none). Then NEXT, ANAM (the NEXT alias id,
+    # a counter - 1 with one alias) and the alias in vanilla TGDialogue's (0x0003CF44) subrecord
+    # order: ALST id, ALID name, FNAM flags 0, ALFR forced reference = PlayerRef (0x14), VTCK none,
+    # ALED end.
     body = (sub(b"EDID", QUEST_EDID) + sub(b"VMAD", vmad) +
             sub(b"DNAM", struct.pack("<HBBII", 0x0011, 0, 0, 0, 0)) +
-            sub(b"NEXT", b"") + sub(b"ANAM", struct.pack("<I", 0)))
+            sub(b"NEXT", b"") + sub(b"ANAM", struct.pack("<I", PLAYER_ALIAS_ID + 1)) +
+            sub(b"ALST", struct.pack("<I", PLAYER_ALIAS_ID)) + sub(b"ALID", b"Player" + bytes(1)) +
+            sub(b"FNAM", struct.pack("<I", 0)) + sub(b"ALFR", struct.pack("<I", PLAYER_REF)) +
+            sub(b"VTCK", struct.pack("<I", 0)) + sub(b"ALED", b""))
     quest = record(b"QUST", 0x04000000 | quest_id, body)
 
     cell_id = fid; fid += 1

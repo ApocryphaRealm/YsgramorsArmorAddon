@@ -13,6 +13,9 @@ ScriptName YsgramorsArmorTombQuest Extends Quest
      the quest is complete, they are disabled (with a fade). The game keeps that in the save, and
      the tomb's encounter zone never resets.
 
+ A player alias (YsgramorsArmorTombPlayer.psc) re-arms the poll on every game load, so a save
+ written before the poll was first armed still opens the tomb (1.0.2).
+
  The check is a single update every few seconds: is Glory of the Dead complete (stage 200, the
  stage that completes it, or the completed flag - console completequest sets only the flag), and
  is the player in the tomb. It covers every way the state can arrive: the quest finishing while
@@ -86,8 +89,38 @@ Function Check()
     EndIf
 EndFunction
 
-Event OnInit()
+; The poll is (re)armed from three places: OnInit, every game load (the player alias's
+; OnPlayerLoadGame, YsgramorsArmorTombPlayer.psc), and each update re-arming itself. Arm() is
+; idempotent: RegisterForSingleUpdate REPLACES any update already pending on this quest, so arming
+; twice (OnInit fires twice on a start-game-enabled quest; a load re-arms a poll that is still
+; running) leaves exactly one pending update, never two chains.
+;
+; Why the load hook (1.0.2, combined run B-20261025-041358-fe3f): a save written a few seconds
+; after New Game (Alternate Perspective's start-cell autosave) held the quest running with no
+; pending update, and only OnInit armed it - so on that save the poll never ran and stage 200
+; opened nothing. Every load now re-arms it.
+Function Arm(String reason)
+    EnsurePlayerAlias()
     RegisterForSingleUpdate(1.0)
+    Debug.Trace("YsgramorsArmorTombQuest: poll armed (" + reason + ")")
+EndFunction
+
+; Alias 0 (Player, forced to PlayerRef in the plugin) carries the load hook. The engine fills it when
+; the quest starts; a quest that started before the alias existed is filled here instead.
+Function EnsurePlayerAlias()
+    ReferenceAlias player = GetAlias(0) as ReferenceAlias
+    If player == None
+        Debug.Trace("YsgramorsArmorTombQuest: player alias 0 missing - the load hook cannot run")
+        Return
+    EndIf
+    If player.GetReference() == None
+        player.ForceRefTo(Game.GetPlayer())
+        Debug.Trace("YsgramorsArmorTombQuest: player alias was empty - filled with the player")
+    EndIf
+EndFunction
+
+Event OnInit()
+    Arm("OnInit")
 EndEvent
 
 Event OnUpdate()

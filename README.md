@@ -42,7 +42,9 @@ HOW THE TOMB OPENS
         tomb never resets.
 
     If you finished the questline before installing this, the body is placed at once
-    and the lid goes the next time you enter the tomb.
+    and the lid goes the next time you enter the tomb. The check is re-armed every
+    time a save is loaded (by a player alias, YsgramorsArmorTombPlayer), so a save
+    made in the first seconds of a new game works as well.
 
 WHY EBONY-TIER
     The armour carries the vanilla keyword ArmorMaterialEbony, read out of the mod's own
