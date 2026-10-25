@@ -292,7 +292,7 @@ def group(label: bytes, gtype: int, payload: bytes) -> bytes:
             struct.pack("<i", gtype) + struct.pack("<I", 0) + struct.pack("<HH", 0, 0) + payload)
 
 
-def clone_vanilla_npc(skyrim_esm: str, formid: int):
+def clone_vanilla_npc(skyrim_esm: str, formid: int, want_type: bytes = b"NPC_"):
     """Return the subrecord list of a vanilla NPC_, decompressing if needed.
 
     Cloning a real record beats hand-building one: an NPC_ has a dozen structurally required
@@ -314,7 +314,7 @@ def clone_vanilla_npc(skyrim_esm: str, formid: int):
             else:
                 fl = struct.unpack_from("<I", d, off + 8)[0]
                 fid = struct.unpack_from("<I", d, off + 12)[0]
-                if fid == formid and typ == b"NPC_":
+                if fid == formid and typ == want_type:
                     data = d[off + 24:off + 24 + size]
                     if fl & 0x00040000:
                         data = zlib.decompress(data[4:])
@@ -335,7 +335,63 @@ def clone_vanilla_npc(skyrim_esm: str, formid: int):
     return walk(24 + struct.unpack_from("<I", d, 4)[0], len(d))
 
 
-def build_placement(next_id: int, skyrim_esm: str):
+def vanilla_subrecord(skyrim_esm: str, rtype: bytes, formid: int, tag: bytes) -> bytes:
+    """One subrecord of a vanilla record, verbatim - so an override repeats the master's bytes
+    instead of a rounded retyping of them (1.0.1 wrote the cage's position from 2-decimal
+    constants, 0.03 units off the vanilla floats)."""
+    subs = clone_vanilla_npc(skyrim_esm, formid, rtype)
+    if subs is None:
+        raise SystemExit(f"could not read {rtype.decode()} 0x{formid:08X} from {skyrim_esm}")
+    vals = [v for t, v in subs if t == tag]
+    if len(vals) != 1:
+        raise SystemExit(f"{rtype.decode()} 0x{formid:08X} has {len(vals)} {tag.decode()} subrecords")
+    return vals[0]
+
+
+# The tomb cell's English name, read out of Skyrim_english.STRINGS (string 0xFB06, inside
+# "Skyrim - Interface.bsa") - Skyrim.esm is localised, so its FULL is a 4-byte string id, and our
+# plugin (theirs) is NOT localised, so the id cannot be carried as-is: a non-localised plugin
+# would read those four bytes as the name itself.
+TOMB_FULL_STRING_ID = 0x0000FB06
+TOMB_FULL_TEXT      = b"Ysgramor's Tomb\x00"
+
+
+def tomb_cell_override(skyrim_esm: str, localized: bool) -> bytes:
+    """The tomb CELL record our references need as their parent, as a FULL copy of Skyrim.esm's.
+
+    The cell itself is not something this mod changes - but references placed in (or overriding
+    references of) a vanilla cell must sit inside that cell's group, under a copy of its CELL
+    record. 1.0.1 wrote that copy with an EDID and nothing else (the page-claims audit,
+    2026-10-25). An override replaces the whole record, so whenever ours won the tomb lost what
+    Skyrim.esm gives it: the interior flags (DATA), lighting (XCLL, LTMP), its location XLCN
+    (YsgramorsTombLocation - cleared status, quest aliases), encounter zone, music, acoustics,
+    image space, water and name. Now every subrecord is carried over verbatim (Update.esm and the
+    DLC masters do not touch this cell, so Skyrim.esm's record IS the winning vanilla one); the
+    only change is FULL, written as plain text because the plugin is not localised.
+    """
+    subs = clone_vanilla_npc(skyrim_esm, TOMB_CELL, b"CELL")
+    if subs is None:
+        raise SystemExit(f"could not read CELL 0x{TOMB_CELL:08X} from {skyrim_esm}")
+    fv = struct.unpack("<H", dict(subs)[b"__FV"])[0]
+    body = b""
+    for tag, val in subs:
+        if tag == b"__FV":
+            continue
+        if tag == b"EDID" and val != TOMB_EDID:
+            raise SystemExit(f"CELL 0x{TOMB_CELL:08X} is {val!r}, not {TOMB_EDID!r}")
+        if tag == b"FULL" and not localized:
+            if len(val) != 4 or struct.unpack("<I", val)[0] != TOMB_FULL_STRING_ID:
+                raise SystemExit(f"tomb FULL is {val.hex()}, not string id 0x{TOMB_FULL_STRING_ID:X} - "
+                                 f"read the name again from the strings table")
+            val = TOMB_FULL_TEXT
+        body += sub(tag, val)
+    for need in (b"DATA", b"XCLL", b"XLCN"):
+        if need not in dict(subs):
+            raise SystemExit(f"vanilla tomb cell has no {need.decode()} - unexpected master")
+    return record(b"CELL", TOMB_CELL, body, form_version=fv)
+
+
+def build_placement(next_id: int, skyrim_esm: str, localized: bool = False):
     """Ysgramor himself, lying in his sarcophagus wearing the armour.
 
     The owner, 2026-09-10: "add a draugr corpse there call it ygremore and put the armor on the
@@ -431,14 +487,20 @@ def build_placement(next_id: int, skyrim_esm: str):
     cage = sub(b"NAME", struct.pack("<I", CAGE_BASE))
     if QUEST_GATE:
         cage += xesp(marker_fid, True)             # present until the quest completes
-    cage += sub(b"DATA", struct.pack("<6f", *CAGE_DATA))
+    cage_data = vanilla_subrecord(skyrim_esm, b"REFR", CAGE_REF, b"DATA")
+    assert all(abs(a - b) < 0.01 for a, b in zip(struct.unpack("<6f", cage_data), CAGE_DATA)), \
+        "vanilla cage position no longer matches CAGE_DATA"
+    cage += sub(b"DATA", cage_data)               # the master's own bytes
     recs.append(record(b"REFR", CAGE_REF, cage,
                        flags=FLAG_PERSISTENT if QUEST_GATE else FLAG_INITIALLY_DISABLED))
 
     lid = sub(b"NAME", struct.pack("<I", LID_BASE))
     if QUEST_GATE:
         lid += xesp(marker_fid, True)              # sealed until the quest completes
-    lid += sub(b"DATA", struct.pack("<6f", *LID_DATA))
+    lid_data = vanilla_subrecord(skyrim_esm, b"REFR", LID_REF, b"DATA")
+    assert all(abs(a - b) < 0.01 for a, b in zip(struct.unpack("<6f", lid_data), LID_DATA)), \
+        "vanilla lid position no longer matches LID_DATA"
+    lid += sub(b"DATA", lid_data)                 # the master's own bytes
     recs.append(record(b"REFR", LID_REF, lid,
                        flags=FLAG_PERSISTENT if QUEST_GATE else FLAG_INITIALLY_DISABLED))
 
@@ -456,7 +518,7 @@ def build_placement(next_id: int, skyrim_esm: str):
     else:
         temporary = group(struct.pack("<I", TOMB_CELL), 9, b"".join(recs[2:]))   # ACHR + 2 REFRs
         children  = group(struct.pack("<I", TOMB_CELL), 6, temporary)
-    cell      = record(b"CELL", TOMB_CELL, sub(b"EDID", TOMB_EDID))
+    cell      = tomb_cell_override(skyrim_esm, localized)
     subblock  = group(struct.pack("<i", TOMB_SUBBLOCK), 3, cell + children)
     block     = group(struct.pack("<i", TOMB_BLOCK), 2, subblock)
     cell_top  = group(b"CELL", 0, block)
@@ -686,7 +748,7 @@ def main(src: str, dst: str) -> int:
     cobj_group = (b"GRUP" + struct.pack("<I", len(blob) + 24) + b"COBJ" +
                   struct.pack("<i", 0) + struct.pack("<I", 0) + struct.pack("<HH", 0, 0) + blob)
 
-    placement, placed, fid = build_placement(fid, SKYRIM_ESM)
+    placement, placed, fid = build_placement(fid, SKYRIM_ESM, localized=bool(tes4_flags & 0x80))
     print(f"  Ysgramor laid in the sarcophagus at {CORPSE_POS} rotZ {CORPSE_ROTZ:.4f}, "
           f"posed by vanilla's own ragdoll data, wearing the four pieces (no cloak)")
     gate = (f"enable-parented (opposite) to scripted marker; opens when C06 completes"

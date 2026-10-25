@@ -1,5 +1,11 @@
 # Changelog - Ysgramor's Armor addon
 
+## 1.0.2 - 2026-10-25 - untested
+
+### Fixed
+- The bridge cage reference keeps vanilla's exact position bytes; 1.0.1 retyped them from rounded constants, a few hundredths of a unit off.
+- The tomb cell record the plugin carries (YsgramorsTomb01) is now a full copy of Skyrim.esm's. 1.0.1 carried only its editor ID, and since a record override replaces the whole record, the tomb could lose its lighting, interior flags, location, encounter zone, music, acoustics and name whenever this plugin won the cell. Nothing about the tomb itself is changed: the record exists only because the two adjusted references and the added ones must sit inside it. The name is written as plain English text ('Ysgramor''s Tomb') because the plugin is not localised.
+
 ## 1.0.1
 
 Built 2026-09-17, before the mod's first upload; 1.0.0 was never posted.
