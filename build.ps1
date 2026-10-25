@@ -9,8 +9,8 @@ instances unless -SourcePlugin says otherwise; it is read, never written. The pa
 "7. current test builds\Ysgramor's Armor addon <version>\" with:
 
     YsgramorsArmor.esp                      their plugin with our records added (tools\Add-YsgramorsArmorRecipes.py)
-    Scripts\YsgramorsArmorTombGate.pex      the tomb gate, compiled by the Creation Kit's compiler
-    Source\Scripts\YsgramorsArmorTombGate.psc
+    Scripts\YsgramorsArmorTombQuest.pex     the tomb quest script, compiled by the Creation Kit's compiler
+    Source\Scripts\YsgramorsArmorTombQuest.psc
     README.txt, NOTICE.md, LICENSE-generator-GPL-3.0.txt
 #>
 param(
@@ -42,9 +42,9 @@ if ($LASTEXITCODE -ne 0) { throw "generator failed ($LASTEXITCODE)" }
 
 Write-Host "== script"
 $compile = "$(@(& py -3 'D:\Claude output\.MD\resolvers\resolve.py' find compile-papyrus)[0])".Trim()   # by role
-& powershell -NoProfile -ExecutionPolicy Bypass -File $compile -Source (Join-Path $repo 'tools\YsgramorsArmorTombGate.psc') -OutDir (Join-Path $out 'Scripts')
+& powershell -NoProfile -ExecutionPolicy Bypass -File $compile -Source (Join-Path $repo 'tools\YsgramorsArmorTombQuest.psc') -OutDir (Join-Path $out 'Scripts')
 if ($LASTEXITCODE -ne 0) { throw "script compile failed ($LASTEXITCODE)" }
-Copy-Item -LiteralPath (Join-Path $repo 'tools\YsgramorsArmorTombGate.psc') -Destination (Join-Path $out 'Source\Scripts\')
+Copy-Item -LiteralPath (Join-Path $repo 'tools\YsgramorsArmorTombQuest.psc') -Destination (Join-Path $out 'Source\Scripts\')
 
 Write-Host "== documents"
 $readme = Get-Content -LiteralPath (Join-Path $repo 'README.md') -Raw

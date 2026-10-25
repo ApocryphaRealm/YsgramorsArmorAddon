@@ -14,13 +14,17 @@ WHY THIS SHAPE (the owner, 2026-09-10)
     higher-priority copy of the same mod. The ORIGINAL file is never written to - source and
     destination are different paths, and the destination lives in the MO2 test mods area.
 
-WHAT IS ADDED - ten COBJ records and nothing else
-    Nothing existing is touched: no record of theirs is edited, no master is added, no header
-    field changes except the two that MUST (record count, next form id). Their ARMO/ARMA/NPC_/
-    OTFT records pass through byte-for-byte.
+WHAT IS ADDED
+    Ten COBJ recipes; Ysgramor's body (OTFT, NPC_, and its ACHR in a holding CELL of our own); a
+    draugr-primary armature per tomb piece; and one start-game-enabled QUST whose script opens the
+    tomb at run time. The plugin overrides NO vanilla cell, worldspace or placed reference (the
+    owner, 2026-10-25) - the build refuses to write one that does (walk_output). Of the original
+    mod's records, ARMO/ARMA gain the draugr armature and race entries (add_draugr_race); the rest,
+    including its NPC_ override of Skyrim.esm's MQ305Ysgramor (Sovngarde), pass through unchanged.
+    No master is added; the header changes only its record count and next object id.
 
     New form ids start at the plugin's own nextObjectID (0x80E), so they cannot collide with the
-    ids already in use (0x800-0x80D). The plugin is ESL-flagged already, and 0x80E-0x817 stays
+    ids already in use (0x800-0x80D). The plugin is ESL-flagged already, and every new id stays
     inside the light range, so it keeps its free load-order slot.
 
 WHY THESE INGREDIENTS
@@ -30,10 +34,8 @@ WHY THESE INGREDIENTS
     layout is verified against those real bytes on every run, because a CTDA that is the wrong
     length loads without complaint and then misbehaves.
 
-NOT gated behind the Companions questline: the mod's author says they plan that eventually, but
-it is their intent for their mod, not what was asked for here, and it would make the armour
-uncraftable until that questline is done. To adopt it, switch STATION_CRAFT to the Skyforge
-keyword (0x000F46CE) and add a GetStageDone condition on quest C06 (0x0001CEF6).
+The recipes are gated on OWNING the piece (GetItemCount >= 1), which in turn comes from Ysgramor's
+body in his tomb once Glory of the Dead (C06) is complete.
 """
 import os
 import struct
@@ -88,23 +90,6 @@ def record(tag: bytes, formid: int, data: bytes, flags: int = 0,
             struct.pack("<HH", form_version, 0) + data)
 
 
-def wstr(s: bytes) -> bytes:
-    """VMAD's string form: uint16 length, no terminator."""
-    return struct.pack("<H", len(s)) + s
-
-
-def vmad_object_script(script: bytes, props) -> bytes:
-    """A VMAD subrecord carrying ONE script with Object-typed properties, in the v5 / object-format-2
-    layout every SE record uses: version, objFormat, scriptCount; per script name + status + props;
-    per property name, type 1 (Object), status 1 (edited), then objFormat-2's value: uint16 unused,
-    int16 alias (-1 = none), uint32 form id."""
-    b = struct.pack("<hhH", 5, 2, 1)
-    b += wstr(script) + struct.pack("<B", 0) + struct.pack("<H", len(props))
-    for name, fid in props:
-        b += wstr(name) + struct.pack("<BB", 1, 1) + struct.pack("<HhI", 0, -1, fid)
-    return b
-
-
 def ctda(op: int, value: float, func: int, p1: int = 0, p2: int = 0) -> bytes:
     """32 bytes: op(1) pad(3) value(4f) func(2) pad(2) p1(4) p2(4) runOn(4) ref(4) unknown(4)."""
     return sub(b"CTDA",
@@ -139,69 +124,56 @@ def cobj(formid: int, edid: str, ingredients, result: int, station: int, conditi
 
 
 
-# ---------------------------------------------------------------- world placement (2026-09-10)
-# The owner asked for the armour to be left loose in Ysgramor's Tomb rather than in a container,
-# and for one vanilla object to be removed while this mod is active.
+# ---------------------------------------------------------------- the tomb (redesigned 2026-10-25)
+# The owner, 2026-10-25, on 1.0.2's full copy of the tomb cell: "I don't see why Ysgramor's armor
+# add-on needs to have a copy of the cell, because now any mod that changes that cell is going to be
+# incompatible with our mod, when all that our mod really needs to do is follow the quest ... to read
+# the right moment for the tomb sarcophagus lid to disappear, and that's it."
 #
-#   place at  X 895.26  Y 358.02  Z 1350.99   (his coordinates, used verbatim)
-#   remove    NorBridgeCageMid01, base 0x00034019, ref 0x000D83AB
+# So the plugin overrides NO vanilla cell, worldspace or placed reference. 1.0.0-1.0.2 placed the
+# body in Ysgramor's tomb and overrode the lid and the cage there, and a plugin cannot do either
+# without carrying the parent CELL record - which then wins over every other mod's edit of the tomb.
+# Now:
 #
-# EVERYTHING BELOW WAS READ OUT OF Skyrim.esm, not assumed:
-#   * REFR 0x000D83AB really is in cell 0x00015254 (YsgramorsTomb01) and its base really is
-#     0x00034019 - both confirmed, so the ref and base the owner gave agree with the game.
-#   * its group nest is CELL -> interior block 2 -> sub-block 1 -> cell children -> TEMPORARY
-#     children, which is where our own references must go too.
-#   * it carries only NAME and DATA, which is what the override below reproduces.
-TOMB_CELL      = 0x00015254
-TOMB_EDID      = b"YsgramorsTomb01\x00"
-TOMB_BLOCK     = 2      # interior block    = cellFormID % 10
-TOMB_SUBBLOCK  = 1      # interior subblock = (cellFormID / 10) % 10
-CAGE_REF       = 0x000D83AB
-CAGE_BASE      = 0x00034019
-CAGE_DATA      = (895.97, -259.42, -1332.61, 0.0, -0.0, 4.6822)   # verbatim from the vanilla record
+#   QUST  AR_YsgramorTombQuest   start-game enabled, one script (YsgramorsArmorTombQuest.psc beside
+#                                this file). Every few seconds: if Glory of the Dead (C06) is complete,
+#                                move the body into the sarcophagus once, and - while the player is
+#                                in the tomb - disable the lid and the cage with a fade.
+#   CELL  AR_YsgramorHoldingCell an interior of the mod's OWN, never visited, no doors - where the
+#                                body waits. (The same shape as Simple Loadout System's storage cell.)
+#   ACHR  AR_YsgramorCorpseRef   the body: starts dead, persistent, initially disabled, with vanilla's
+#                                saved ragdoll pose (XRGD) - in the holding cell now.
+#
+# The form ids stay where 1.0.1 (posted) put them: OTFT 0x818, NPC_ 0x819, ACHR 0x81A, the draugr
+# armatures 0x81C-0x81F. 0x81B was 1.0.1's gate marker and is retired, never reused, so a save that
+# knew it does not meet a different record under the same id. The quest and the cell take 0x820 and
+# 0x821.
+#
+# EVERY vanilla fact the script depends on is read out of Skyrim.esm on each build (check_tomb_facts):
+#   * REFR 0x000AF824 is NorSarcophagusTop (base 0x00034CE3) and REFR 0x000D83AB NorBridgeCageMid01
+#     (base 0x00034019), both TEMPORARY children of YsgramorsTomb01 (0x00015254) - so the script looks
+#     them up with Game.GetForm only while the tomb is loaded.
+#   * REFR 0x00033DFE NorSarcophagusBottom is PERSISTENT and in that cell - the body's anchor, reachable
+#     whether or not the tomb is loaded.
+#   * C06 stage 200 carries the "completes quest" flag.
+#   * the tomb's encounter zone (0x0003EC91) has Never Resets, so the disabled lid stays disabled.
 
-# The owner's console reading, with the sign correction he confirmed. These are EXACTLY the
-# coordinates of NorSarcophagusBottom (REFR 0x00033DFE) - he had the console crosshair on the
-# sarcophagus when he took them, so a bare copy would bury the armour inside the coffin.
+TOMB_CELL        = 0x00015254   # CELL YsgramorsTomb01
+TOMB_ZONE        = 0x0003EC91   # ECZN YsgramorsTombZone
+LID_REF          = 0x000AF824   # REFR NorSarcophagusTop
+LID_BASE         = 0x00034CE3
+CAGE_REF         = 0x000D83AB   # REFR NorBridgeCageMid01 (the owner named it, 2026-09-10)
+CAGE_BASE        = 0x00034019
+SARCOPHAGUS_REF  = 0x00033DFE   # REFR NorSarcophagusBottom
+SARCOPHAGUS_BASE = 0x00034CE1
 SARCOPHAGUS_ORIGIN = (895.26, -358.02, -1350.99)
+C06_QUEST        = 0x0001CEF6   # QUST "C06", Glory of the Dead
+C06_DONE_STAGE   = 200
 
-# How much height to add, measured rather than guessed: NorSarcophagusBottom's own bounds are
-# z[0,62], so its open rim is 62 units above that origin. 70 puts the pieces a little above the
-# rim, where Havok settles them down into the open casket once the lid below is gone.
-SARCOPHAGUS_RIM   = 62.0
-PLACE_HEIGHT      = 70.0
-PLACE_AT = (SARCOPHAGUS_ORIGIN[0], SARCOPHAGUS_ORIGIN[1], SARCOPHAGUS_ORIGIN[2] + PLACE_HEIGHT)
-
-# The casket lid, to be removed along with the cage (the owner, 2026-09-10). Read from the
-# vanilla record, not assumed: NorSarcophagusTop, sitting 55.58 units above the bottom.
-LID_REF   = 0x000AF824
-LID_BASE  = 0x00034CE3
-LID_DATA  = (895.2628784179688, -358.0207214355469, -1295.4112548828125, 0.0, -0.0, 3.112388849258423)
-
-# Initially Disabled. This is how a plugin removes a vanilla object without deleting the record -
-# deleting it would leave a dangling reference for anything that points at it. The object simply
-# never spawns while this plugin is active, and removing the plugin restores it.
+FLAG_PERSISTENT         = 0x00000400
 FLAG_INITIALLY_DISABLED = 0x00000800
+FLAG_STARTS_DEAD        = 0x00000200   # ACHR record flag; every vanilla corpse placement carries it
 
-# --- gating on the quest (the owner, 2026-09-10) -----------------------------------------
-# "have the sarcophagus lid disappear only after the quest where you release Kodlak's soul from
-# Hircine" - that is C06, Glory of the Dead.
-#
-# No script is needed. Skyrim's ENABLE PARENT chains one reference's enabled state to another's,
-# and carries a flag for "set state to the OPPOSITE of the parent". C06 already switches on a
-# reference at exactly the right instant:
-#
-#   REFR 0x00058300  C06KodlaksGhostREF - Kodlak's ghost, initially disabled, enabled when his
-#                    soul is freed. Found by listing every initially-disabled reference in the
-#                    tomb and reading the quest's own aliases - not assumed.
-#
-# Both halves hang off it, in opposite directions:
-#   lid    -> OPPOSITE : present while the ghost is off, gone the moment he appears
-#   armour -> NORMAL   : absent while the ghost is off, appears with him
-#
-# The armour needs gating too, which is not obvious: it sits at the sarcophagus origin + 70,
-# ABOVE the closed lid's top surface (-1285.41), so ungated it would rest in plain sight on the
-# shut lid and be lootable before the questline had been touched.
 # Skyrim.esm is read for vanilla records and the recipe-shape check. Discovered, not hard-coded
 # (rule 4): SKYRIM_ESM in the environment, else the first MO2 Stock Game or Steam copy found.
 _ESM_CANDIDATES = [
@@ -213,77 +185,50 @@ _ESM_CANDIDATES = [
 SKYRIM_ESM = next((c for c in _ESM_CANDIDATES if c and os.path.isfile(c)), _ESM_CANDIDATES[1])
 DRAUGR_RACE       = 0x00000D53   # RNAM of the corpse NPC we clone
 CORPSE_TEMPLATE   = 0x0005AFA6   # NPC_ TreasCorpseDraugrMale - the vanilla draugr corpse
-FLAG_STARTS_DEAD  = 0x00000200   # ACHR record flag; every vanilla corpse placement carries it
-# How high above the sarcophagus origin to spawn him. Its bounds are z[0,62], so this drops him
-# inside the box rather than on top of the rim; Havok settles the ragdoll from there.
-# --- placement copied from how VANILLA lays a corpse in a closed sarcophagus ---------------
-# Two attempts put him on the floor behind the coffin instead of inside it, and my second guess -
-# that his standing collision capsule was spanning the 62-unit walls, so raise him from 40 to 72 -
-# was wrong. The height was never the problem. The owner said to go and find a vanilla example
-# ("there are plenty of examples throughout the game of draugr being positioned inside of a
-# sarcophagus properly with lid closed"), so all 220 NorSarcophagusBottom placements in Skyrim.esm
-# were listed and every corpse lying within 90 units of one was read out. All 17 of them carry
-# XRGD - saved RAGDOLL DATA - and ours did not. That subrecord is what pins a dead body in a
-# hand-authored pose; without it the engine has no pose to hold, drops him as a fresh ragdoll,
-# finds the coffin solid, and settles him on the nearest open floor. Which is exactly what was
-# seen, at both heights, which is why changing the height never helped.
-#
-# The pair this is copied from, read out of Skyrim.esm rather than remembered:
+
+# --- where the body lies, copied from how VANILLA lays a corpse in a closed sarcophagus -----------
+# Two early attempts put him on the floor behind the coffin. The answer was vanilla's own: all 17
+# corpses lying within 90 units of one of the 220 NorSarcophagusBottom placements in Skyrim.esm carry
+# XRGD - saved RAGDOLL DATA - which pins a dead body in a hand-authored pose. The pair copied:
 #   REFR 0x0007884F NorSarcophagusBottom     pos (1409.31, 2460.86, -1423.75) rotZ 6.0332
-#   ACHR 0x00078850 TreasCorpseDraugrFemale  dist 43.2u, dZ +40.5, flags StartsDead,
-#                                            subrecords NAME / XRGD / XLCN / DATA
-#
-# So vanilla's own height inside the box is +40.55 - the original 40 was right and the "fix"
-# moved away from it. The XY offset and rotation below are vanilla's, rotated out of its
-# sarcophagus's frame into ours. XRGD holds bone offsets in the actor's OWN frame (the largest
-# number in the 504-byte blob is 38.8 - body-sized, not world-sized), which is why it transplants
-# to a different coffin unchanged.
+#   ACHR 0x00078850 TreasCorpseDraugrFemale  dist 43.2u, dZ +40.5, flags StartsDead, NAME/XRGD/XLCN/DATA
+# Its XY offset and rotation, rotated out of that sarcophagus's frame into ours, give the position
+# below; XRGD holds bone offsets in the actor's own frame, so it transplants unchanged. The script
+# (YsgramorsArmorTombQuest.psc) carries the same numbers - check_script_constants() compares them.
 CORPSE_POS   = (909.66, -362.16, -1310.44)
-CORPSE_ROTZ  = 1.8792
+CORPSE_ROTZ  = 1.8792            # radians; the script's BodyAngleZ is this in degrees
 RAGDOLL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "ysgramor-corpse-ragdoll.bin")
+SCRIPT_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "YsgramorsArmorTombQuest.psc")
 
-# Gate the tomb contents on finishing Glory of the Dead (C06). ON since 2026-09-17: the owner
-# walked into the tomb on a character that had not touched the questline and found the lid and the
-# cage already gone ("those aren't supposed to disappear until after the quest finishes").
-#
-# The first design hung everything off C06KodlaksGhostREF (0x00058300) as an enable parent. It was
-# WRONG, and would have shipped wrong: c06questscript's OnUpdate disables the ghost again with a
-# fade once his farewell ends (`gk.Disable(True)` then SetStage(200)), so the lid would have
-# returned and the body vanished the moment the quest completed. Found by decompiling the vanilla
-# scripts (Champollion over Skyrim - Misc.bsa), not by assuming. No vanilla reference flips
-# permanently at C06's completion - every Enable/Disable in the quest's scripts is either early
-# (funeral, statue activator, Kodlak's journal) or undone (the ghost).
-#
-# So the parent is OUR OWN reference: an XMarker, initially disabled, carrying a Papyrus script
-# (YsgramorsArmorTombGate.psc, beside this file) that enables the marker once C06 reports
-# completed. It polls only while the tomb cell is attached, or once at first load, and stops
-# for good after it fires. Enable-parent children then follow in one step:
-#
-#   lid   -> OPPOSITE of the marker : sealed until the quest completes, then gone
-#   cage  -> OPPOSITE of the marker : likewise
-#   body  -> NORMAL                 : appears when the tomb opens
-#
-# Because the switch is our marker and not a Disable() written onto vanilla references, removing
-# the plugin removes the marker and every vanilla reference returns to its vanilla state.
-# Enable-parent members are persistent references in the cell's PERSISTENT group (the CK does
-# the same when a parent is set), and the marker carries the Persistent flag as a scripted
-# reference must.
-QUEST_GATE = True
-
-C06_QUEST        = 0x0001CEF6   # QUST "C06", Glory of the Dead - EditorID read out of Skyrim.esm
-XMARKER_BASE     = 0x0000003B   # STAT "XMarker"                - likewise
-GATE_SCRIPT      = b"YsgramorsArmorTombGate"
-GATE_MARKER_EDID = b"AR_YsgramorTombGateMarker\x00"
-FLAG_PERSISTENT  = 0x00000400
-XESP_OPPOSITE    = 0x00000001
+QUEST_SCRIPT     = b"YsgramorsArmorTombQuest"
+QUEST_EDID       = b"AR_YsgramorTombQuest\x00"
+HOLDING_EDID     = b"AR_YsgramorHoldingCell\x00"
+RETIRED_IDS      = (0x81B,)      # 1.0.1's AR_YsgramorTombGateMarker - never reused
 
 
-def xesp(parent, opposite):
-    """Enable parent: 8 bytes, parent form id then flags. Layout read off the vanilla doors in
-    this very cell (REFR 0x000D794E), which carry an 8-byte XESP of exactly this shape."""
-    return sub(b"XESP", struct.pack("<II", parent, XESP_OPPOSITE if opposite else 0))
+def wstr(s: bytes) -> bytes:
+    """VMAD's string form: uint16 length, no terminator."""
+    return struct.pack("<H", len(s)) + s
 
+
+def vmad_script(script: bytes, props) -> bytes:
+    """A VMAD subrecord carrying ONE script, in the v5 / object-format-2 layout every SE record uses:
+    version, objFormat, scriptCount; per script name + status + props; per property name, type,
+    status 1 (edited), value. Type 1 (Object) is objFormat-2's uint16 unused, int16 alias (-1 =
+    none), uint32 form id; type 3 (Int) is an int32. A quest's VMAD may end right after its scripts -
+    vanilla DialogueGeneric (0x00013EB3) carries one script, two Object properties and nothing more."""
+    b = struct.pack("<hhH", 5, 2, 1)
+    b += wstr(script) + struct.pack("<B", 0) + struct.pack("<H", len(props))
+    for name, kind, value in props:
+        if kind == "object":
+            b += wstr(name) + struct.pack("<BB", 1, 1) + struct.pack("<HhI", 0, -1, value)
+        elif kind == "int":
+            b += wstr(name) + struct.pack("<BB", 3, 1) + struct.pack("<i", value)
+        else:
+            raise ValueError(kind)
+    return b
 
 
 def group(label: bytes, gtype: int, payload: bytes) -> bytes:
@@ -293,22 +238,24 @@ def group(label: bytes, gtype: int, payload: bytes) -> bytes:
 
 
 def clone_vanilla_npc(skyrim_esm: str, formid: int, want_type: bytes = b"NPC_"):
-    """Return the subrecord list of a vanilla NPC_, decompressing if needed.
+    """Return the subrecord list of a vanilla record (NPC_ by default), decompressing if needed. The
+    list ends with three pseudo-subrecords: __FV (the record's form version), __FL (its record
+    flags) and __GP (the type and label of the group it sits in).
 
     Cloning a real record beats hand-building one: an NPC_ has a dozen structurally required
     subrecords (race, template, voice, AI data, stats) and getting any of them wrong produces a
     plugin that loads and then misbehaves. TreasCorpseDraugrMale is the vanilla draugr CORPSE
     used for exactly this - a body lying in a tomb with an inventory to loot.
     """
-    import zlib
     d = open(skyrim_esm, "rb").read()
 
-    def walk(off, end):
+    def walk(off, end, gtype, glabel):
         while off + 24 <= end:
             typ = d[off:off + 4]
             size = struct.unpack_from("<I", d, off + 4)[0]
             if typ == b"GRUP":
-                r = walk(off + 24, off + size)
+                r = walk(off + 24, off + size, struct.unpack_from("<i", d, off + 12)[0],
+                         struct.unpack_from("<I", d, off + 8)[0])
                 if r: return r
                 off += size
             else:
@@ -328,92 +275,96 @@ def clone_vanilla_npc(skyrim_esm: str, formid: int, want_type: bytes = b"NPC_"):
                     # the source's own form version rides along: a cloned record keeps it (the
                     # Dragonbone generator crashed the game by re-stamping copied records as 44)
                     out.append((b"__FV", struct.pack("<H", struct.unpack_from("<H", d, off + 20)[0])))
+                    out.append((b"__FL", struct.pack("<I", fl)))
+                    out.append((b"__GP", struct.pack("<iI", gtype, glabel)))
                     return out
                 off += 24 + size
         return None
 
-    return walk(24 + struct.unpack_from("<I", d, 4)[0], len(d))
+    return walk(24 + struct.unpack_from("<I", d, 4)[0], len(d), 0, 0)
 
 
-def vanilla_subrecord(skyrim_esm: str, rtype: bytes, formid: int, tag: bytes) -> bytes:
-    """One subrecord of a vanilla record, verbatim - so an override repeats the master's bytes
-    instead of a rounded retyping of them (1.0.1 wrote the cage's position from 2-decimal
-    constants, 0.03 units off the vanilla floats)."""
-    subs = clone_vanilla_npc(skyrim_esm, formid, rtype)
-    if subs is None:
-        raise SystemExit(f"could not read {rtype.decode()} 0x{formid:08X} from {skyrim_esm}")
-    vals = [v for t, v in subs if t == tag]
-    if len(vals) != 1:
-        raise SystemExit(f"{rtype.decode()} 0x{formid:08X} has {len(vals)} {tag.decode()} subrecords")
-    return vals[0]
+PSEUDO = (b"__FV", b"__FL", b"__GP")
 
 
-# The tomb cell's English name, read out of Skyrim_english.STRINGS (string 0xFB06, inside
-# "Skyrim - Interface.bsa") - Skyrim.esm is localised, so its FULL is a 4-byte string id, and our
-# plugin (theirs) is NOT localised, so the id cannot be carried as-is: a non-localised plugin
-# would read those four bytes as the name itself.
-TOMB_FULL_STRING_ID = 0x0000FB06
-TOMB_FULL_TEXT      = b"Ysgramor's Tomb\x00"
+def check_tomb_facts(skyrim_esm: str) -> None:
+    """Read every vanilla fact the script relies on out of Skyrim.esm - refuse to build on a guess."""
+    def rec(rtype, fid):
+        subs = clone_vanilla_npc(skyrim_esm, fid, rtype)
+        if subs is None:
+            raise SystemExit(f"{rtype.decode()} 0x{fid:08X} not found in {skyrim_esm}")
+        return subs
+
+    def ref_facts(fid, base, persistent):
+        subs = dict(rec(b"REFR", fid))
+        got_base = struct.unpack("<I", subs[b"NAME"])[0]
+        flags = struct.unpack("<I", subs[b"__FL"])[0]
+        gtype, glabel = struct.unpack("<iI", subs[b"__GP"])
+        want_group = 8 if persistent else 9
+        if got_base != base or glabel != TOMB_CELL or gtype != want_group \
+                or bool(flags & FLAG_PERSISTENT) != persistent:
+            raise SystemExit(f"REFR 0x{fid:08X}: base 0x{got_base:08X} group {gtype}/0x{glabel:08X} "
+                             f"flags 0x{flags:08X} - not what the script expects")
+        return subs
+
+    ref_facts(LID_REF, LID_BASE, False)
+    ref_facts(CAGE_REF, CAGE_BASE, False)
+    sarc = ref_facts(SARCOPHAGUS_REF, SARCOPHAGUS_BASE, True)
+    pos = struct.unpack("<3f", sarc[b"DATA"][:12])
+    if any(abs(a - b) > 0.01 for a, b in zip(pos, SARCOPHAGUS_ORIGIN)):
+        raise SystemExit(f"NorSarcophagusBottom is at {pos}, not {SARCOPHAGUS_ORIGIN}")
+
+    quest = rec(b"QUST", C06_QUEST)
+    stage_flags, cur = {}, None
+    for tag, val in quest:
+        if tag == b"INDX":
+            cur = struct.unpack("<H", val[:2])[0]
+        elif tag == b"QSDT" and cur is not None:
+            stage_flags[cur] = val[0]
+    if not stage_flags.get(C06_DONE_STAGE, 0) & 0x01:
+        raise SystemExit(f"C06 stage {C06_DONE_STAGE} does not carry the completes-quest flag")
+
+    zone = dict(rec(b"ECZN", TOMB_ZONE))
+    if not zone[b"DATA"][10] & 0x01:
+        raise SystemExit("YsgramorsTombZone no longer has Never Resets")
+    cell = dict(rec(b"CELL", TOMB_CELL))
+    if struct.unpack("<I", cell[b"XEZN"])[0] != TOMB_ZONE:
+        raise SystemExit("YsgramorsTomb01 is no longer in YsgramorsTombZone")
+    print("  Skyrim.esm: lid and cage are temporary refs in YsgramorsTomb01, the sarcophagus bottom is "
+          "persistent, C06 stage 200 completes the quest, the tomb never resets")
 
 
-def tomb_cell_override(skyrim_esm: str, localized: bool) -> bytes:
-    """The tomb CELL record our references need as their parent, as a FULL copy of Skyrim.esm's.
-
-    The cell itself is not something this mod changes - but references placed in (or overriding
-    references of) a vanilla cell must sit inside that cell's group, under a copy of its CELL
-    record. 1.0.1 wrote that copy with an EDID and nothing else (the page-claims audit,
-    2026-10-25). An override replaces the whole record, so whenever ours won the tomb lost what
-    Skyrim.esm gives it: the interior flags (DATA), lighting (XCLL, LTMP), its location XLCN
-    (YsgramorsTombLocation - cleared status, quest aliases), encounter zone, music, acoustics,
-    image space, water and name. Now every subrecord is carried over verbatim (Update.esm and the
-    DLC masters do not touch this cell, so Skyrim.esm's record IS the winning vanilla one); the
-    only change is FULL, written as plain text because the plugin is not localised.
-    """
-    subs = clone_vanilla_npc(skyrim_esm, TOMB_CELL, b"CELL")
-    if subs is None:
-        raise SystemExit(f"could not read CELL 0x{TOMB_CELL:08X} from {skyrim_esm}")
-    fv = struct.unpack("<H", dict(subs)[b"__FV"])[0]
-    body = b""
-    for tag, val in subs:
-        if tag == b"__FV":
-            continue
-        if tag == b"EDID" and val != TOMB_EDID:
-            raise SystemExit(f"CELL 0x{TOMB_CELL:08X} is {val!r}, not {TOMB_EDID!r}")
-        if tag == b"FULL" and not localized:
-            if len(val) != 4 or struct.unpack("<I", val)[0] != TOMB_FULL_STRING_ID:
-                raise SystemExit(f"tomb FULL is {val.hex()}, not string id 0x{TOMB_FULL_STRING_ID:X} - "
-                                 f"read the name again from the strings table")
-            val = TOMB_FULL_TEXT
-        body += sub(tag, val)
-    for need in (b"DATA", b"XCLL", b"XLCN"):
-        if need not in dict(subs):
-            raise SystemExit(f"vanilla tomb cell has no {need.decode()} - unexpected master")
-    return record(b"CELL", TOMB_CELL, body, form_version=fv)
+def check_script_constants() -> None:
+    """The script's body position and angle must be the generator's (one number, two files)."""
+    import math, re
+    text = open(SCRIPT_FILE, encoding="utf-8").read()
+    want = {"BodyX": CORPSE_POS[0], "BodyY": CORPSE_POS[1], "BodyZ": CORPSE_POS[2],
+            "BodyAngleZ": math.degrees(CORPSE_ROTZ)}
+    for name, value in want.items():
+        m = re.search(r"Float Property " + name + r" = (-?[0-9.]+) AutoReadOnly", text)
+        if not m or abs(float(m.group(1)) - value) > 0.01:
+            raise SystemExit(f"{SCRIPT_FILE}: {name} is {m.group(1) if m else 'missing'}, "
+                             f"the generator says {value:.2f}")
 
 
-def build_placement(next_id: int, skyrim_esm: str, localized: bool = False):
-    """Ysgramor himself, lying in his sarcophagus wearing the armour.
+def build_placement(next_id: int, skyrim_esm: str):
+    """Ysgramor's body and its outfit: OTFT, NPC_ (top-level records), and the ACHR, which goes in
+    the holding cell built by build_tomb_quest (it is returned separately for that).
 
     The owner, 2026-09-10: "add a draugr corpse there call it ygremore and put the armor on the
-    corpse". This replaces the four loose pieces that were resting in the coffin - a body reads
-    far better, and the armour is then looted the ordinary way instead of picked up as litter.
-
-    Three new records and two overrides:
+    corpse".
         OTFT  the four pieces (NO CLOAK, as asked earlier)
         NPC_  a clone of TreasCorpseDraugrMale, renamed Ysgramor, wearing that outfit
-        ACHR  him, placed in the sarcophagus and flagged STARTS DEAD (0x200, the flag every
-              vanilla draugr corpse placement carries - checked, not assumed)
-        REFR  the casket lid, disabled, so he is visible
-        REFR  the bridge cage the owner named, disabled
+        ACHR  him, flagged STARTS DEAD | PERSISTENT | INITIALLY DISABLED, with vanilla's ragdoll pose;
+              the quest script moves him into the sarcophagus and enables him
     """
-    recs = []
     fid = next_id
 
     # --- the outfit: four pieces, no cloak
     outfit_id = fid; fid += 1
     body = sub(b"EDID", b"AR_YsgramorTombOutfit" + b"\x00")
     body += sub(b"INAM", b"".join(struct.pack("<I", a) for nm, a, _ing in ARMOUR if nm != "Cloak"))
-    recs.append(record(b"OTFT", 0x04000000 | outfit_id, body))
+    otft = record(b"OTFT", 0x04000000 | outfit_id, body)
 
     # --- the corpse, cloned from vanilla so every required subrecord is real
     npc_id = fid; fid += 1
@@ -421,33 +372,24 @@ def build_placement(next_id: int, skyrim_esm: str, localized: bool = False):
     if not src:
         raise SystemExit(f"could not read NPC_ 0x{CORPSE_TEMPLATE:08X} from {skyrim_esm}")
     npc_form_version = struct.unpack("<H", dict(src)[b"__FV"])[0]      # vanilla's own (40)
-    src = [(t, v) for t, v in src if t != b"__FV"]
+    src = [(t, v) for t, v in src if t not in PSEUDO]
     out = []
     for tag, val in src:
         if tag == b"EDID":
             out.append((b"EDID", b"AR_YsgramorCorpse" + b"\x00"))
         elif tag == b"FULL":
-            continue                                        # ours is written above
+            continue                                        # ours is written after CNAM
         elif tag == b"CNAM":
             # FULL belongs AFTER CNAM and before DATA - where every vanilla NPC_ carries it,
-            # including MQ305Ysgramor in this very plugin. Subrecord order is not free-form:
-            # writing FULL straight after EDID parses today but is not the shape the engine and
-            # the tooling expect to read.
+            # including MQ305Ysgramor in this very plugin.
             out.append((b"CNAM", val))
             out.append((b"FULL", b"Ysgramor" + b"\x00"))
         elif tag == b"DOFT":
             out.append((b"DOFT", struct.pack("<I", 0x04000000 | outfit_id)))
         elif tag == b"ACBS":
-            # templateDataFlags sits at OFFSET 18, not 16 - offset 16 is dispositionBase. The
-            # ACBS layout is flags(4) magicka(2) stamina(2) level(2) calcMin(2) calcMax(2)
-            # speedMult(2) disposition(2) templateFlags(2) healthOffset(2) bleedout(2), and the
-            # vanilla bytes end "...0000 ff0f 0000 0000" - the ff0f at 18 is the 0x0FFF.
-            # An earlier pass wrote to 16, which zeroed dispositionBase (already 0) and left
-            # 0x0FFF standing, so the record silently inherited its name and inventory from the
-            # template and both of our changes would have been thrown away.
-            #
-            # 0x0FFF is "inherit everything from TPLT". Clear "Use Base Data" (0x0080) so our
-            # FULL is used, and "Use Inventory" (0x0100) so our DOFT is used.
+            # templateDataFlags sits at OFFSET 18 (offset 16 is dispositionBase). 0x0FFF is "inherit
+            # everything from TPLT"; clear "Use Base Data" (0x0080) so our FULL is used, and "Use
+            # Inventory" (0x0100) so our DOFT is used.
             acbs = bytearray(val)
             tdf = struct.unpack_from("<H", acbs, 18)[0]
             struct.pack_into("<H", acbs, 18, tdf & ~0x0180)
@@ -458,75 +400,65 @@ def build_placement(next_id: int, skyrim_esm: str, localized: bool = False):
         raise SystemExit("cloned NPC had no CNAM to anchor FULL after - name would be missing")
     if not any(t == b"DOFT" for t, _ in out):
         out.append((b"DOFT", struct.pack("<I", 0x04000000 | outfit_id)))
-    recs.append(record(b"NPC_", 0x04000000 | npc_id, b"".join(sub(t, v) for t, v in out),
-                       form_version=npc_form_version))
+    npc = record(b"NPC_", 0x04000000 | npc_id, b"".join(sub(t, v) for t, v in out),
+                 form_version=npc_form_version)
 
-    # --- him, in the coffin
+    # --- him, waiting in the holding cell
     achr_id = fid; fid += 1
     x, y, z = CORPSE_POS
     body = sub(b"EDID", b"AR_YsgramorCorpseRef" + b"\x00")
     body += sub(b"NAME", struct.pack("<I", 0x04000000 | npc_id))
-    # The saved ragdoll pose, verbatim from vanilla ACHR 0x00078850, in vanilla's own subrecord
-    # order (NAME then XRGD). This is the piece whose absence put him on the floor twice. It is
-    # read from a file rather than pasted in as an escape sequence, because embedded NUL escapes
-    # in this script have been corrupted by editing more than once.
+    # The saved ragdoll pose, verbatim from vanilla ACHR 0x00078850, in vanilla's subrecord order
+    # (NAME then XRGD). Read from a file: embedded NUL escapes in this script were corrupted by
+    # editing more than once.
     with open(RAGDOLL_FILE, "rb") as f:
         ragdoll = f.read()
     if len(ragdoll) != 504:
         raise SystemExit(f"ragdoll blob is {len(ragdoll)} bytes, expected the vanilla 504")
     body += sub(b"XRGD", ragdoll)
-    if QUEST_GATE:
-        marker_id = fid; fid += 1
-        marker_fid = 0x04000000 | marker_id
-        body += xesp(marker_fid, False)            # appears when the tomb opens
+    # The tomb coordinates are kept as the record's own position too, so the reference carries the
+    # place it is meant for; the script moves him there with MoveTo + SetPosition + SetAngle.
     body += sub(b"DATA", struct.pack("<6f", x, y, z, 0.0, 0.0, CORPSE_ROTZ))
-    body_flags = FLAG_STARTS_DEAD | (FLAG_PERSISTENT | FLAG_INITIALLY_DISABLED if QUEST_GATE else 0)
-    recs.append(record(b"ACHR", 0x04000000 | achr_id, body, flags=body_flags))
+    achr = record(b"ACHR", 0x04000000 | achr_id, body,
+                  flags=FLAG_STARTS_DEAD | FLAG_PERSISTENT | FLAG_INITIALLY_DISABLED)
 
-    # --- the two removals
-    cage = sub(b"NAME", struct.pack("<I", CAGE_BASE))
-    if QUEST_GATE:
-        cage += xesp(marker_fid, True)             # present until the quest completes
-    cage_data = vanilla_subrecord(skyrim_esm, b"REFR", CAGE_REF, b"DATA")
-    assert all(abs(a - b) < 0.01 for a, b in zip(struct.unpack("<6f", cage_data), CAGE_DATA)), \
-        "vanilla cage position no longer matches CAGE_DATA"
-    cage += sub(b"DATA", cage_data)               # the master's own bytes
-    recs.append(record(b"REFR", CAGE_REF, cage,
-                       flags=FLAG_PERSISTENT if QUEST_GATE else FLAG_INITIALLY_DISABLED))
+    while fid in RETIRED_IDS:
+        fid += 1                                            # 0x81B, 1.0.1's gate marker
+    top = group(b"OTFT", 0, otft) + group(b"NPC_", 0, npc)
+    return top, achr, 0x04000000 | achr_id, fid
 
-    lid = sub(b"NAME", struct.pack("<I", LID_BASE))
-    if QUEST_GATE:
-        lid += xesp(marker_fid, True)              # sealed until the quest completes
-    lid_data = vanilla_subrecord(skyrim_esm, b"REFR", LID_REF, b"DATA")
-    assert all(abs(a - b) < 0.01 for a, b in zip(struct.unpack("<6f", lid_data), LID_DATA)), \
-        "vanilla lid position no longer matches LID_DATA"
-    lid += sub(b"DATA", lid_data)                 # the master's own bytes
-    recs.append(record(b"REFR", LID_REF, lid,
-                       flags=FLAG_PERSISTENT if QUEST_GATE else FLAG_INITIALLY_DISABLED))
 
-    if QUEST_GATE:
-        # --- the switch: our marker, scripted, off until C06 completes
-        marker = sub(b"EDID", GATE_MARKER_EDID)
-        marker += sub(b"VMAD", vmad_object_script(GATE_SCRIPT, [(b"GloryOfTheDead", C06_QUEST)]))
-        marker += sub(b"NAME", struct.pack("<I", XMARKER_BASE))
-        marker += sub(b"DATA", struct.pack("<6f", *SARCOPHAGUS_ORIGIN, 0.0, 0.0, 0.0))
-        recs.append(record(b"REFR", marker_fid, marker,
-                           flags=FLAG_PERSISTENT | FLAG_INITIALLY_DISABLED))
-        # enable-parent members and the scripted marker are persistent: PERSISTENT group (8)
-        children = group(struct.pack("<I", TOMB_CELL), 6,
-                         group(struct.pack("<I", TOMB_CELL), 8, b"".join(recs[2:])))
-    else:
-        temporary = group(struct.pack("<I", TOMB_CELL), 9, b"".join(recs[2:]))   # ACHR + 2 REFRs
-        children  = group(struct.pack("<I", TOMB_CELL), 6, temporary)
-    cell      = tomb_cell_override(skyrim_esm, localized)
-    subblock  = group(struct.pack("<i", TOMB_SUBBLOCK), 3, cell + children)
-    block     = group(struct.pack("<i", TOMB_BLOCK), 2, subblock)
-    cell_top  = group(b"CELL", 0, block)
+def build_tomb_quest(next_id: int, achr: bytes, achr_fid: int):
+    """The quest that opens the tomb, and the holding cell the body waits in."""
+    fid = next_id
+    quest_id = fid; fid += 1
+    vmad = vmad_script(QUEST_SCRIPT, [
+        (b"GloryOfTheDead",    "object", C06_QUEST),
+        (b"YsgramorsTomb",     "object", TOMB_CELL),
+        (b"SarcophagusBottom", "object", SARCOPHAGUS_REF),
+        (b"YsgramorBody",      "object", achr_fid),
+        (b"LidFormID",         "int",    LID_REF),
+        (b"CageFormID",        "int",    CAGE_REF),
+    ])
+    # DNAM in vanilla DialogueGeneric's shape: flags 0x0011 (Start Game Enabled | Starts Enabled),
+    # priority 0, form version byte 0, unknown 0, type 0 (none). NEXT and ANAM close the record as
+    # they do in every vanilla quest with no aliases.
+    body = (sub(b"EDID", QUEST_EDID) + sub(b"VMAD", vmad) +
+            sub(b"DNAM", struct.pack("<HBBII", 0x0011, 0, 0, 0, 0)) +
+            sub(b"NEXT", b"") + sub(b"ANAM", struct.pack("<I", 0)))
+    quest = record(b"QUST", 0x04000000 | quest_id, body)
 
-    # the OTFT and NPC_ are ordinary top-level records, in their own groups
-    otft_top = group(b"OTFT", 0, recs[0])
-    npc_top  = group(b"NPC_", 0, recs[1])
-    return otft_top + npc_top + cell_top, len(recs), fid
+    cell_id = fid; fid += 1
+    cell = record(b"CELL", 0x04000000 | cell_id,
+                  sub(b"EDID", HOLDING_EDID) + sub(b"DATA", struct.pack("<H", 0x0001)))  # interior
+    # interior block / sub-block: the last and second-to-last decimal digits of the object index
+    index = cell_id & 0xFFFFFF
+    block, subblock = index % 10, (index // 10) % 10
+    label = struct.pack("<I", 0x04000000 | cell_id)
+    children = group(label, 6, group(label, 8, achr))          # persistent children
+    cells = group(b"CELL", 0, group(struct.pack("<i", block), 2,
+                                    group(struct.pack("<i", subblock), 3, cell + children)))
+    return group(b"QUST", 0, quest), cells, fid
 
 
 # --- the corpse rendered NAKED even with DraugrRace in every additional-race list ------------
@@ -694,6 +626,32 @@ def add_draugr_race(blob: bytes, new_armatures=()):
         i += 24 + size
     return bytes(out), patched, armos
 
+# Record types that live inside cells and worldspaces. Overriding any of them (or the CELL/WRLD
+# parents they force) is what made 1.0.0-1.0.2 conflict with every mod that edits the tomb; the build
+# now refuses to write a plugin that overrides one of a master's.
+WORLD_TYPES = {b"CELL", b"WRLD", b"REFR", b"ACHR", b"PGRE", b"PMIS", b"PHZD", b"PARW", b"PBAR",
+               b"PBEA", b"PCON", b"PFLA", b"NAVM", b"LAND"}
+
+
+def walk_output(blob: bytes, n_masters: int):
+    """(records + groups in the blob, [world-type records that belong to a master])."""
+    total, bad, i = 0, [], 0
+    while i + 24 <= len(blob):
+        typ = blob[i:i + 4]
+        size = struct.unpack_from("<I", blob, i + 4)[0]
+        total += 1
+        if typ == b"GRUP":
+            n, b2 = walk_output(blob[i + 24:i + size], n_masters)
+            total += n; bad += b2
+            i += size
+            continue
+        fid = struct.unpack_from("<I", blob, i + 12)[0]
+        if typ in WORLD_TYPES and (fid >> 24) < n_masters:
+            bad.append(f"{typ.decode()} 0x{fid:08X}")
+        i += 24 + size
+    return total, bad
+
+
 def main(src: str, dst: str) -> int:
     print("verifying condition layout:")
     verify_conditions()
@@ -743,20 +701,16 @@ def main(src: str, dst: str) -> int:
         raise SystemExit(f"form ids would reach 0x{fid:X}, past the ESL range - would break the "
                          f"plugin's light flag")
 
-    cobj_last = fid - 1                  # remembered before the placement records take ids
+    cobj_last = fid - 1                  # remembered before the tomb records take ids
     blob = b"".join(records)
     cobj_group = (b"GRUP" + struct.pack("<I", len(blob) + 24) + b"COBJ" +
                   struct.pack("<i", 0) + struct.pack("<I", 0) + struct.pack("<HH", 0, 0) + blob)
 
-    placement, placed, fid = build_placement(fid, SKYRIM_ESM, localized=bool(tes4_flags & 0x80))
-    print(f"  Ysgramor laid in the sarcophagus at {CORPSE_POS} rotZ {CORPSE_ROTZ:.4f}, "
-          f"posed by vanilla's own ragdoll data, wearing the four pieces (no cloak)")
-    gate = (f"enable-parented (opposite) to scripted marker; opens when C06 completes"
-            if QUEST_GATE else "disabled outright (quest gate OFF - testing)")
-    print(f"  cage REFR 0x{CAGE_REF:08X} (NorBridgeCageMid01, base 0x{CAGE_BASE:08X}): {gate}")
-    print(f"  lid REFR 0x{LID_REF:08X}: {gate}")
-    print(f"  records added: {placed} (outfit, corpse NPC, his placement, the two removals"
-          f"{', the gate marker' if QUEST_GATE else ''})")
+    check_tomb_facts(SKYRIM_ESM)
+    check_script_constants()
+    top, achr, achr_fid, fid = build_placement(fid, SKYRIM_ESM)
+    print(f"  Ysgramor (ACHR 0x{achr_fid:08X}) waits disabled in the mod's holding cell, posed by vanilla's "
+          f"own ragdoll data, wearing the four pieces (no cloak)")
 
     # the draugr-primary armatures, and the two edits to the mod's own records that carry them
     draugr_arma, fid = build_draugr_armatures(rest, fid)
@@ -766,19 +720,30 @@ def main(src: str, dst: str) -> int:
     if armos != len(draugr_arma):
         raise SystemExit(f"attached {armos} armatures but built {len(draugr_arma)}")
 
-    # only the two header fields that must change
+    quest_group, cell_group, fid = build_tomb_quest(fid, achr, achr_fid)
+    if fid > 0xFFF:
+        raise SystemExit(f"form ids would reach 0x{fid:X}, past the ESL range")
+    print(f"  QUST AR_YsgramorTombQuest + CELL AR_YsgramorHoldingCell: the quest opens the tomb at run time "
+          f"(lid REFR 0x{LID_REF:08X}, cage REFR 0x{CAGE_REF:08X}) once C06 stage {C06_DONE_STAGE} is done")
+
+    body_out = rest + cobj_group + top + quest_group + cell_group
+    total, overrides = walk_output(body_out, n_masters=4)
+    if overrides:
+        raise SystemExit("the plugin would override vanilla placed/world records: " + ", ".join(overrides))
+
+    # the two header fields that must change: the count (records AND groups, as the source's own 17
+    # = 13 records + 4 groups shows) and the next object id
     new_tes4_body = bytearray(tes4_body)
-    struct.pack_into("<fiI", new_tes4_body, hedr_at, version,
-                     num_records + len(records) + placed + len(draugr_arma), fid)
+    struct.pack_into("<fiI", new_tes4_body, hedr_at, version, total, fid)
     new_tes4 = record(b"TES4", 0, bytes(new_tes4_body), flags=tes4_flags)
 
-    out = new_tes4 + rest + cobj_group + placement
+    out = new_tes4 + body_out
     with open(dst, "wb") as f:
         f.write(out)
 
     print(f"  added {len(records)} COBJ records at 0x{0x04000000 | next_id:08X}"
           f"-0x{0x04000000 | cobj_last:08X}")
-    print(f"  header: {num_records} -> {num_records + len(records) + placed + len(draugr_arma)} records, "
+    print(f"  header: {num_records} -> {total} records and groups, "
           f"nextObjectID 0x{next_id:X} -> 0x{fid:X}")
     print(f"wrote {dst}  ({len(out):,} bytes, was {len(data):,})")
     print(f"  ARMA records taught DraugrRace as an additional race: {armas}")

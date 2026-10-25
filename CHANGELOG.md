@@ -3,8 +3,10 @@
 ## 1.0.2 - 2026-10-25 - untested
 
 ### Fixed
-- The bridge cage reference keeps vanilla's exact position bytes; 1.0.1 retyped them from rounded constants, a few hundredths of a unit off.
-- The tomb cell record the plugin carries (YsgramorsTomb01) is now a full copy of Skyrim.esm's. 1.0.1 carried only its editor ID, and since a record override replaces the whole record, the tomb could lose its lighting, interior flags, location, encounter zone, music, acoustics and name whenever this plugin won the cell. Nothing about the tomb itself is changed: the record exists only because the two adjusted references and the added ones must sit inside it. The name is written as plain English text ('Ysgramor''s Tomb') because the plugin is not localised.
+- The plugin no longer edits Ysgramor's Tomb. 1.0.1 placed the body in the tomb and overrode the sarcophagus lid and a bridge cage piece there, which forced it to carry the tomb's cell record - so any mod that edits the tomb (Northern Scenery's tomb edit, for one) conflicted with it, and 1.0.1's copy of that record held only its editor ID, so whichever loaded last could strip the tomb's lighting, location, music and acoustics. Now the plugin overrides no cell, worldspace or placed reference of the game; the build refuses to write one that does.
+- The tomb opens at run time instead: a start-game-enabled quest of the mod's own (AR_YsgramorTombQuest, script YsgramorsArmorTombQuest) checks every few seconds whether Glory of the Dead is complete (stage 200 or the completed flag). When it is, Ysgramor's body - now kept disabled in a holding cell of the mod's own - is moved into the sarcophagus once and enabled, and while the player is in the tomb the lid and the cage are disabled with a fade. Saves that finished the questline earlier open the same way.
+- 1.0.1's gate marker (0x81B) and its script YsgramorsArmorTombGate are retired; the id is not reused. Every other form id is unchanged.
+- The plugin header's record count now counts groups as well as records, as the original plugin's does.
 
 ## 1.0.1
 
