@@ -100,14 +100,18 @@ EndFunction
 ; pending update, and only OnInit armed it - so on that save the poll never ran and stage 200
 ; opened nothing. Every load now re-arms it.
 Function Arm(String reason)
-    EnsurePlayerAlias()
     RegisterForSingleUpdate(1.0)
     Debug.Trace("YsgramorsArmorTombQuest: poll armed (" + reason + ")")
 EndFunction
 
-; Alias 0 (Player, forced to PlayerRef in the plugin) carries the load hook. The engine fills it when
-; the quest starts; a quest that started before the alias existed is filled here instead.
+; Alias 0 (Player, forced to PlayerRef in the plugin) carries the load hook, and the engine fills it
+; when the quest starts. On a new game OnInit runs before that: a ForceRefTo from OnInit left the alias
+; reading NONE after the next load (combined runs B-20261102-022403-2f04, B-20261102-033543-0bec), so
+; this waits for the running quest and is only called from the poll.
 Function EnsurePlayerAlias()
+    If !IsRunning()
+        Return
+    EndIf
     ReferenceAlias player = GetAlias(0) as ReferenceAlias
     If player == None
         Debug.Trace("YsgramorsArmorTombQuest: player alias 0 missing - the load hook cannot run")
@@ -124,6 +128,7 @@ Event OnInit()
 EndEvent
 
 Event OnUpdate()
+    EnsurePlayerAlias()
     Check()
     RegisterForSingleUpdate(PollSeconds)
 EndEvent
