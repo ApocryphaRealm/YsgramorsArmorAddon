@@ -3,6 +3,7 @@
 ## 1.0.2 - 2026-10-25 - untested
 
 ### Fixed
+- Ysgramor's body stays in the sarcophagus. It was placed as soon as the quest finished, even with the tomb unloaded, and in testing it then lay well outside the sarcophagus once the tomb loaded. It is now placed when you are in the tomb, and laid back if it is found out of the sarcophagus, up to three times a visit.
 - The quest's player alias stays filled after a save and reload on a new game. The script filled the alias itself as soon as it initialised, before the game had started the quest, and that fill read empty after the next load, so the load hook never ran. It now only fills the alias from its poll, once the quest is running.
 - The compiled scripts' headers no longer carry the build machine's account and computer name (the Papyrus compiler writes both into every .pex; they are now blanked after compiling). No gameplay change from this item - 1.0.2 also carries the tomb changes listed below, which are what this release changes in game.
 - The plugin no longer edits Ysgramor's Tomb. 1.0.1 placed the body in the tomb and overrode the sarcophagus lid and a bridge cage piece there, which forced it to carry the tomb's cell record - so any mod that edits the tomb (Northern Scenery's tomb edit, for one) conflicted with it, and 1.0.1's copy of that record held only its editor ID, so whichever loaded last could strip the tomb's lighting, location, music and acoustics. Now the plugin overrides no cell, worldspace or placed reference of the game; the build refuses to write one that does.

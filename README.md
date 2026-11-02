@@ -34,15 +34,17 @@ HOW THE TOMB OPENS
     changes.
 
     Instead a small quest of this mod's own runs a script (YsgramorsArmorTombQuest)
-    that checks every few seconds whether Glory of the Dead is complete. When it is:
+    that checks every few seconds whether Glory of the Dead is complete. When it is,
+    the next time you are inside the tomb:
       - Ysgramor's body, which waits switched off in a closed cell of this mod's own,
-        is moved into the sarcophagus and switched on (once);
-      - while you are inside the tomb, the sarcophagus lid and the bridge cage piece
-        are switched off, with a fade. The game remembers this in your save, and the
-        tomb never resets.
+        is moved into the sarcophagus and switched on. If it is ever found out of the
+        sarcophagus while you are in the tomb, it is laid back, up to three times a
+        visit, so one you drag out on purpose stays out after that;
+      - the sarcophagus lid and the bridge cage piece are switched off, with a fade.
+        The game remembers this in your save, and the tomb never resets.
 
-    If you finished the questline before installing this, the body is placed at once
-    and the lid goes the next time you enter the tomb. The check is re-armed every
+    If you finished the questline before installing this, all of it happens the next
+    time you enter the tomb. The check is re-armed every
     time a save is loaded (by a player alias, YsgramorsArmorTombPlayer), so a save
     made in the first seconds of a new game works as well.
 

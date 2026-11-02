@@ -6,8 +6,10 @@ ScriptName YsgramorsArmorTombQuest Extends Quest
  tomb is changed at run time instead, by this script on a small start-game-enabled quest of the
  mod's own:
 
-   * Ysgramor's body is a reference of this mod, kept disabled in a holding cell of its own. When
-     the quest is complete it is moved into the sarcophagus (once) and enabled.
+   * Ysgramor's body is a reference of this mod, kept disabled in a holding cell of its own. The
+     first time the player is in the tomb with the quest complete it is moved into the sarcophagus
+     and enabled, with the tomb already loaded around it. If it is ever found out of the sarcophagus
+     while the player is in the tomb, it is laid back (at most ReturnsPerVisit times a visit).
    * The sarcophagus lid and one bridge cage piece are vanilla references that are not persistent,
      so they exist in memory only while the tomb is loaded. Whenever the player is in the tomb and
      the quest is complete, they are disabled (with a fade). The game keeps that in the save, and
@@ -50,7 +52,13 @@ Float Property BodyY = -362.16 AutoReadOnly
 Float Property BodyZ = -1310.44 AutoReadOnly
 Float Property BodyAngleZ = 107.67 AutoReadOnly
 
+; The body rests up to about 55 units from the sarcophagus's origin in place; vanilla's sarcophagus
+; corpses all lie within 90. A body further away than that has left the sarcophagus.
+Float Property InPlaceDistance = 90.0 AutoReadOnly
+Int Property ReturnsPerVisit = 3 AutoReadOnly
+
 Bool BodyPlaced = False
+Int ReturnsThisVisit = 0
 
 Bool Function QuestComplete()
     If GloryOfTheDead == None
@@ -59,16 +67,40 @@ Bool Function QuestComplete()
     Return GloryOfTheDead.IsCompleted() || GloryOfTheDead.GetStageDone(200)
 EndFunction
 
-Function PlaceBody()
-    If BodyPlaced || YsgramorBody == None || SarcophagusBottom == None
-        Return
-    EndIf
+Function LayBody()
+    YsgramorBody.Disable()
     YsgramorBody.MoveTo(SarcophagusBottom)
     YsgramorBody.SetPosition(BodyX, BodyY, BodyZ)
     YsgramorBody.SetAngle(0.0, 0.0, BodyAngleZ)
     YsgramorBody.Enable()
+EndFunction
+
+; Only called with the player in the tomb. Placed while the tomb was unloaded, the body read the right
+; position until the cell's 3D loaded, then lay about 240 units away and 200 lower, 2 of 2 (combined
+; run B-20261102-054301-4abb). Placed with the player in the tomb it stayed in the sarcophagus
+; (B-20261025-041358-fe3f).
+Function PlaceBody()
+    If BodyPlaced || YsgramorBody == None || SarcophagusBottom == None
+        Return
+    EndIf
+    LayBody()
     BodyPlaced = True
     Debug.Trace("YsgramorsArmorTombQuest: Ysgramor laid in his sarcophagus")
+EndFunction
+
+; The same check covers a reload or a re-entry where he falls as the cell's 3D loads. The cap stops a
+; body that keeps falling being moved for ever, and it is why a corpse the player drags out comes back
+; only a few times.
+Function KeepBodyInPlace()
+    If !BodyPlaced || YsgramorBody == None || SarcophagusBottom == None || !YsgramorBody.Is3DLoaded()
+        Return
+    EndIf
+    If YsgramorBody.GetDistance(SarcophagusBottom) <= InPlaceDistance || ReturnsThisVisit >= ReturnsPerVisit
+        Return
+    EndIf
+    ReturnsThisVisit += 1
+    Debug.Trace("YsgramorsArmorTombQuest: body found " + YsgramorBody.GetDistance(SarcophagusBottom) + " from the sarcophagus - laid back, return " + ReturnsThisVisit)
+    LayBody()
 EndFunction
 
 Function Remove(Int formID)
@@ -80,12 +112,13 @@ Function Remove(Int formID)
 EndFunction
 
 Function Check()
-    If QuestComplete()
+    If Game.GetPlayer().GetParentCell() != YsgramorsTomb
+        ReturnsThisVisit = 0
+    ElseIf QuestComplete()
+        KeepBodyInPlace()
         PlaceBody()
-        If Game.GetPlayer().GetParentCell() == YsgramorsTomb
-            Remove(LidFormID)
-            Remove(CageFormID)
-        EndIf
+        Remove(LidFormID)
+        Remove(CageFormID)
     EndIf
 EndFunction
 
