@@ -17,6 +17,9 @@
 - 1.0.1's gate marker (0x81B) and its script YsgramorsArmorTombGate are retired; the id is not reused. Every other form id is unchanged.
 - The plugin header's record count now counts groups as well as records, as the original plugin's does.
 
+### Changed
+- The download is a FOMOD installer: its one page asks when Ysgramor's tomb opens - after the Companions questline (the default) or from the start, which installs the No Companions requirement plugin.
+
 ## 1.0.1
 
 Built 2026-09-17, before the mod's first upload; 1.0.0 was never posted.

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+	<moduleName>Ysgramor's Armor addon</moduleName>
+	<requiredInstallFiles>
+		<folder source="Common" destination="" priority="0" />
+	</requiredInstallFiles>
+	<installSteps order="Explicit">
+		<installStep name="Ysgramor's Tomb">
+			<optionalFileGroups order="Explicit">
+				<group name="When does the tomb open?" type="SelectExactlyOne">
+					<plugins order="Explicit">
+						<plugin name="After the Companions questline">
+							<description>The tomb stays sealed until Glory of the Dead is complete. Then the sarcophagus lid and one bridge cage piece fade away, and Ysgramor lies in the open sarcophagus wearing the set.</description>
+							<typeDescriptor><type name="Recommended" /></typeDescriptor>
+						</plugin>
+						<plugin name="From the start (no Companions questline)">
+							<description>For games where the Companions questline cannot be finished, such as setups that remove the Companions. The tomb opens the first time you enter it, with no quest needed. Adds one small light plugin, "YsgramorsArmor - No Companions requirement.esp", that changes a single setting of this mod. It can be turned on or off on a save you already have.</description>
+							<files>
+								<folder source="NoCompanions" destination="" priority="0" />
+							</files>
+							<typeDescriptor><type name="Optional" /></typeDescriptor>
+						</plugin>
+					</plugins>
+				</group>
+			</optionalFileGroups>
+		</installStep>
+	</installSteps>
+</config>

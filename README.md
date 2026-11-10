@@ -29,12 +29,11 @@ WHAT IT ADDS
     as it was - sealed.
 
     No Companions questline in your game (a setting where they are gone, for example)?
-    Turn on the optional plugin "YsgramorsArmor - No Companions requirement.esp" and
-    the tomb opens the first time you enter it, with no quest needed. It sits in the
-    package's "optional" folder: in MO2, open the mod's Optional ESPs tab and move it
-    up into the main list; otherwise copy it into Data beside YsgramorsArmor.esp. It
-    changes one setting of this mod and nothing else, and switching it on or off works
-    on a save you already have.
+    Pick "From the start (no Companions questline)" in the installer and the tomb opens
+    the first time you enter it, with no quest needed. That option adds one small light
+    plugin, "YsgramorsArmor - No Companions requirement.esp", which changes one setting
+    of this mod and nothing else. Switching it on or off works on a save you already
+    have: reinstall and pick the other option, or enable or disable that plugin.
 
 HOW THE TOMB OPENS
     The plugin does not edit the tomb. It carries no copy of the tomb's cell and

@@ -6,15 +6,17 @@ build.ps1 - build the Ysgramor's Armor addon package.
 The version comes from the VERSION file (written by version-gate.ps1 - never by hand). The source
 plugin is DeSepticOasis's untouched YsgramorsArmor.esp (Nexus SE 130153, v1.0), found in the MO2
 instances unless -SourcePlugin says otherwise; it is read, never written. The package lands in
-"7. current test builds\Ysgramor's Armor addon <version>\" with:
+"7. current test builds\Ysgramor's Armor addon <version>\" as a FOMOD installer (since 1.1.0):
 
-    YsgramorsArmor.esp                      their plugin with our records added (tools\Add-YsgramorsArmorRecipes.py)
+    fomod\info.xml, fomod\ModuleConfig.xml  the installer; its one page asks when the tomb opens
+    Common\ - always installed:
+    YsgramorsArmor.esp                     their plugin with our records added (tools\Add-YsgramorsArmorRecipes.py)
     Scripts\YsgramorsArmorTombQuest.pex     the tomb quest script, compiled by the Creation Kit's compiler
     Scripts\YsgramorsArmorTombPlayer.pex    its player alias script - re-arms the quest's poll on every load
     Source\Scripts\YsgramorsArmorTombQuest.psc, Source\Scripts\YsgramorsArmorTombPlayer.psc
-    optional\YsgramorsArmor - No Companions requirement.esp   opens the tomb without the Companions questline (1.1.0);
-                                            in the 'optional' folder, which MO2 lists under Optional ESPs - off by default
     README.txt, NOTICE.md, LICENSE-generator-GPL-3.0.txt
+    NoCompanions\YsgramorsArmor - No Companions requirement.esp   the installer option "From the start (no Companions
+                                            questline)": opens the tomb without the questline; not installed by default
 #>
 param(
     [string]$Version,
@@ -35,13 +37,14 @@ if (-not $SourcePlugin) {
     if (-not $SourcePlugin) { throw "the original YsgramorsArmor.esp was not found; pass -SourcePlugin" }
 }
 
-$out = Join-Path $OutRoot "Ysgramor's Armor addon $Version"
+$pkg = Join-Path $OutRoot "Ysgramor's Armor addon $Version"
+$out = Join-Path $pkg 'Common'          # the files the installer always installs
 # Never deleted here: an earlier package of this number is moved to .MD\backups first.
-if (Test-Path -LiteralPath $out) { throw "$out already exists - move it to backups first; this build never deletes a package" }
-New-Item -ItemType Directory -Force -Path $out, (Join-Path $out 'Scripts'), (Join-Path $out 'Source\Scripts'), (Join-Path $out 'optional') | Out-Null
+if (Test-Path -LiteralPath $pkg) { throw "$pkg already exists - move it to backups first; this build never deletes a package" }
+New-Item -ItemType Directory -Force -Path $out, (Join-Path $out 'Scripts'), (Join-Path $out 'Source\Scripts'), (Join-Path $pkg 'NoCompanions'), (Join-Path $pkg 'fomod') | Out-Null
 
 Write-Host "== plugin"
-& python (Join-Path $repo 'tools\Add-YsgramorsArmorRecipes.py') $SourcePlugin (Join-Path $out 'YsgramorsArmor.esp') (Join-Path $out 'optional\YsgramorsArmor - No Companions requirement.esp')
+& python (Join-Path $repo 'tools\Add-YsgramorsArmorRecipes.py') $SourcePlugin (Join-Path $out 'YsgramorsArmor.esp') (Join-Path $pkg 'NoCompanions\YsgramorsArmor - No Companions requirement.esp')
 if ($LASTEXITCODE -ne 0) { throw "generator failed ($LASTEXITCODE)" }
 
 Write-Host "== scripts"
@@ -59,5 +62,12 @@ Set-Content -LiteralPath (Join-Path $out 'README.txt') -Value $readme -NoNewline
 Copy-Item -LiteralPath (Join-Path $repo 'NOTICE.md') -Destination (Join-Path $out 'NOTICE.md')
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination (Join-Path $out 'LICENSE-generator-GPL-3.0.txt')
 
-Get-ChildItem -LiteralPath $out -Recurse -File | ForEach-Object { "  " + $_.FullName.Substring($out.Length + 1) + "  " + $_.Length }
-Write-Host "built $out"
+Write-Host "== installer"
+Copy-Item -LiteralPath (Join-Path $repo 'fomod\ModuleConfig.xml') -Destination (Join-Path $pkg 'fomod\')
+$info = Get-Content -LiteralPath (Join-Path $repo 'fomod\info.xml') -Raw
+$info = [regex]::Replace($info, '<Version>[^<]*</Version>', "<Version>$Version</Version>")   # stamped from VERSION
+Set-Content -LiteralPath (Join-Path $pkg 'fomod\info.xml') -Value $info -NoNewline -Encoding UTF8
+foreach ($x in 'info.xml', 'ModuleConfig.xml') { [xml](Get-Content -LiteralPath (Join-Path $pkg "fomod\$x") -Raw) | Out-Null }   # throws on malformed XML
+
+Get-ChildItem -LiteralPath $pkg -Recurse -File | ForEach-Object { "  " + $_.FullName.Substring($pkg.Length + 1) + "  " + $_.Length }
+Write-Host "built $pkg"
