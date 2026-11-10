@@ -52,6 +52,11 @@ Int Property CageFormID Auto
 
 Float Property PollSeconds = 5.0 AutoReadOnly
 
+; The portcullis in the entrance chamber (REFR 000AB10B, Skyrim.esm, persistent, NorPortcullisSCRIPT). The game opens
+; it only when Wuuthrad is placed on Ysgramor's statue (C06YsgramorStatueScript, TombDoor), and Wuuthrad comes from the
+; Companions questline - so without the questline the burial chamber cannot be reached (Fable review, 2026-11-10).
+Int Property TombDoorFormID = 700683 AutoReadOnly       ; 0x000AB10B
+
 ; Where the body lies, in the tomb's own coordinates: vanilla's corpse-in-sarcophagus offset, read
 ; from Skyrim.esm by the generator (Add-YsgramorsArmorRecipes.py, CORPSE_POS / CORPSE_ROTZ).
 Float Property BodyX = 909.66 AutoReadOnly
@@ -121,10 +126,40 @@ Function Remove(Int formID)
     EndIf
 EndFunction
 
+Bool Function NoCompanionsMode()
+    Return SealUntilGloryOfTheDead != None && SealUntilGloryOfTheDead.GetValue() == 0.0
+EndFunction
+
+; No Companions mode only: open the entrance portcullis the way its own script does when activated - mark it open
+; and put it in its open state, so its OnLoad keeps it open on every later visit, and play the open animation if the
+; gate is on screen. It is not disabled (vanilla disables it only after Wuuthrad is placed), so the statue's own
+; Wuuthrad path still works if the player does the Companions questline after all.
+Function OpenEntranceGate()
+    ObjectReference gateRef = Game.GetForm(TombDoorFormID) as ObjectReference
+    If gateRef == None || gateRef.IsDisabled()
+        Return
+    EndIf
+    NorPortcullisSCRIPT gate = gateRef as NorPortcullisSCRIPT
+    If gate == None || gate.isAlreadyOpen || gate.isOpening
+        Return
+    EndIf
+    gate.isAlreadyOpen = True
+    gate.GotoState("downPosition")
+    If gateRef.Is3DLoaded()
+        gateRef.PlayAnimation("open")
+    EndIf
+    Debug.Trace("YsgramorsArmorTombQuest: entrance portcullis opened (No Companions requirement)")
+EndFunction
+
 Function Check()
     If Game.GetPlayer().GetParentCell() != YsgramorsTomb
         ReturnsThisVisit = 0
-    ElseIf QuestComplete()
+        Return
+    EndIf
+    If NoCompanionsMode()
+        OpenEntranceGate()
+    EndIf
+    If QuestComplete()
         KeepBodyInPlace()
         PlaceBody()
         Remove(LidFormID)

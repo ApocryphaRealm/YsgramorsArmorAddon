@@ -5,6 +5,7 @@
 (1.0.2 was never posted; its changes are released as part of 1.1.0.)
 
 ### Added
+- The 'From the start (no Companions questline)' option also opens the portcullis in the tomb's entrance chamber, which the game opens only when Wuuthrad is placed on Ysgramor's statue. It is opened the way the game opens it, so placing Wuuthrad later still works.
 - An optional plugin, "YsgramorsArmor - No Companions requirement.esp", in the package's "optional" folder: with it on, Ysgramor's tomb opens the first time you enter it, with no need to finish Glory of the Dead - for games where the Companions questline is gone (asked for on the Nexus page for Shattered Skyrim). The choice is one constant global of the mod's own, AR_YsgramorTombSealUntilGlory (0x822): 1 in the main plugin, so the default is unchanged - sealed until Glory of the Dead; the optional plugin overrides only that global, to 0. Being constant, it is read from the plugins rather than the save, so turning the optional plugin on or off also works on an existing save.
 
 ### Fixed

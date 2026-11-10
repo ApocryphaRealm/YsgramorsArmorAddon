@@ -30,7 +30,10 @@ WHAT IT ADDS
 
     No Companions questline in your game (a setting where they are gone, for example)?
     Pick "From the start (no Companions questline)" in the installer and the tomb opens
-    the first time you enter it, with no quest needed. That option adds one small light
+    the first time you enter it, with no quest needed: the portcullis in the entrance
+    chamber, which normally opens only when Wuuthrad is placed on Ysgramor's statue,
+    opens by itself, and the sarcophagus is open. The portcullis is opened the way the
+    game opens it, so placing Wuuthrad later still works. That option adds one small light
     plugin, "YsgramorsArmor - No Companions requirement.esp", which changes one setting
     of this mod and nothing else. Switching it on or off works on a save you already
     have: reinstall and pick the other option, or enable or disable that plugin.

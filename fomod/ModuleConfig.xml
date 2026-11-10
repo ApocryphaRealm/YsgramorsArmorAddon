@@ -14,7 +14,7 @@
 							<typeDescriptor><type name="Recommended" /></typeDescriptor>
 						</plugin>
 						<plugin name="From the start (no Companions questline)">
-							<description>For games where the Companions questline cannot be finished, such as setups that remove the Companions. The tomb opens the first time you enter it, with no quest needed. Adds one small light plugin, "YsgramorsArmor - No Companions requirement.esp", that changes a single setting of this mod. It can be turned on or off on a save you already have.</description>
+							<description>For games where the Companions questline cannot be finished, such as setups that remove the Companions. The first time you enter the tomb, the portcullis in the entrance chamber opens (normally it needs Wuuthrad on Ysgramor's statue) and the sarcophagus is open, with no quest needed. Adds one small light plugin, "YsgramorsArmor - No Companions requirement.esp", that changes a single setting of this mod. It can be turned on or off on a save you already have.</description>
 							<files>
 								<folder source="NoCompanions" destination="" priority="0" />
 							</files>
