@@ -1,6 +1,11 @@
 # Changelog - Ysgramor's Armor addon
 
-## 1.0.2 - 2026-10-25 - untested
+## 1.1.0 - 2026-11-09 - untested
+
+(1.0.2 was never posted; its changes are released as part of 1.1.0.)
+
+### Added
+- An optional plugin, "YsgramorsArmor - No Companions requirement.esp", in the package's "optional" folder: with it on, Ysgramor's tomb opens the first time you enter it, with no need to finish Glory of the Dead - for games where the Companions questline is gone (asked for on the Nexus page for Shattered Skyrim). The choice is one constant global of the mod's own, AR_YsgramorTombSealUntilGlory (0x822): 1 in the main plugin, so the default is unchanged - sealed until Glory of the Dead; the optional plugin overrides only that global, to 0. Being constant, it is read from the plugins rather than the save, so turning the optional plugin on or off also works on an existing save.
 
 ### Fixed
 - Ysgramor's body stays in the sarcophagus. It was placed as soon as the quest finished, even with the tomb unloaded, and in testing it then lay well outside the sarcophagus once the tomb loaded. It is now placed when you are in the tomb, and laid back if it is found out of the sarcophagus, up to three times a visit.

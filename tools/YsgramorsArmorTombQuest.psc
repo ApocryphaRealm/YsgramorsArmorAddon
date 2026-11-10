@@ -27,6 +27,13 @@ ScriptName YsgramorsArmorTombQuest Extends Quest
 Quest Property GloryOfTheDead Auto
 {C06, Glory of the Dead (Skyrim.esm).}
 
+GlobalVariable Property SealUntilGloryOfTheDead Auto
+{AR_YsgramorTombSealUntilGlory, a CONSTANT global of this mod: 1 (the main plugin's value) keeps the
+ tomb sealed until Glory of the Dead is complete; 0 opens it with no Companions questline. The optional
+ plugin "YsgramorsArmor - No Companions requirement.esp" sets it to 0 (1.1.0). Constant, so its value
+ is always the loaded plugins' and never one kept in a save - switching the optional plugin on or off
+ applies to an existing save as well.}
+
 Cell Property YsgramorsTomb Auto
 {YsgramorsTomb01 (Skyrim.esm) - the tomb's one interior cell.}
 
@@ -61,6 +68,9 @@ Bool BodyPlaced = False
 Int ReturnsThisVisit = 0
 
 Bool Function QuestComplete()
+    If SealUntilGloryOfTheDead != None && SealUntilGloryOfTheDead.GetValue() == 0.0
+        Return True                                 ; the No Companions requirement plugin is active
+    EndIf
     If GloryOfTheDead == None
         Return False
     EndIf

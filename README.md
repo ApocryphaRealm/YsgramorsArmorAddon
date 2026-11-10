@@ -28,13 +28,22 @@ WHAT IT ADDS
     the open sarcophagus with the set in its inventory. Until then the tomb is exactly
     as it was - sealed.
 
+    No Companions questline in your game (a setting where they are gone, for example)?
+    Turn on the optional plugin "YsgramorsArmor - No Companions requirement.esp" and
+    the tomb opens the first time you enter it, with no quest needed. It sits in the
+    package's "optional" folder: in MO2, open the mod's Optional ESPs tab and move it
+    up into the main list; otherwise copy it into Data beside YsgramorsArmor.esp. It
+    changes one setting of this mod and nothing else, and switching it on or off works
+    on a save you already have.
+
 HOW THE TOMB OPENS
     The plugin does not edit the tomb. It carries no copy of the tomb's cell and
     changes none of the objects in it, so a mod that redesigns the tomb keeps its
     changes.
 
     Instead a small quest of this mod's own runs a script (YsgramorsArmorTombQuest)
-    that checks every few seconds whether Glory of the Dead is complete. When it is,
+    that checks every few seconds whether Glory of the Dead is complete (or the optional
+    plugin is on). When it is,
     the next time you are inside the tomb:
       - Ysgramor's body, which waits switched off in a closed cell of this mod's own,
         is moved into the sarcophagus and switched on. If it is ever found out of the

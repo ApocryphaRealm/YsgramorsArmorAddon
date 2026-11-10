@@ -12,6 +12,8 @@ instances unless -SourcePlugin says otherwise; it is read, never written. The pa
     Scripts\YsgramorsArmorTombQuest.pex     the tomb quest script, compiled by the Creation Kit's compiler
     Scripts\YsgramorsArmorTombPlayer.pex    its player alias script - re-arms the quest's poll on every load
     Source\Scripts\YsgramorsArmorTombQuest.psc, Source\Scripts\YsgramorsArmorTombPlayer.psc
+    optional\YsgramorsArmor - No Companions requirement.esp   opens the tomb without the Companions questline (1.1.0);
+                                            in the 'optional' folder, which MO2 lists under Optional ESPs - off by default
     README.txt, NOTICE.md, LICENSE-generator-GPL-3.0.txt
 #>
 param(
@@ -36,10 +38,10 @@ if (-not $SourcePlugin) {
 $out = Join-Path $OutRoot "Ysgramor's Armor addon $Version"
 # Never deleted here: an earlier package of this number is moved to .MD\backups first.
 if (Test-Path -LiteralPath $out) { throw "$out already exists - move it to backups first; this build never deletes a package" }
-New-Item -ItemType Directory -Force -Path $out, (Join-Path $out 'Scripts'), (Join-Path $out 'Source\Scripts') | Out-Null
+New-Item -ItemType Directory -Force -Path $out, (Join-Path $out 'Scripts'), (Join-Path $out 'Source\Scripts'), (Join-Path $out 'optional') | Out-Null
 
 Write-Host "== plugin"
-& python (Join-Path $repo 'tools\Add-YsgramorsArmorRecipes.py') $SourcePlugin (Join-Path $out 'YsgramorsArmor.esp')
+& python (Join-Path $repo 'tools\Add-YsgramorsArmorRecipes.py') $SourcePlugin (Join-Path $out 'YsgramorsArmor.esp') (Join-Path $out 'optional\YsgramorsArmor - No Companions requirement.esp')
 if ($LASTEXITCODE -ne 0) { throw "generator failed ($LASTEXITCODE)" }
 
 Write-Host "== scripts"

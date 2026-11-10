@@ -5,7 +5,10 @@ Injects forge-crafting and armour-table tempering recipes DIRECTLY INTO a copy o
 "YsgramorsArmor.esp" (DeSepticOasis, Nexus SE 130153 v1.0), so the recipes ship inside the mod's
 own plugin and no second ESP appears in the load order.
 
-    python Add-YsgramorsArmorRecipes.py <source .esp> <destination .esp>
+    python Add-YsgramorsArmorRecipes.py <source .esp> <destination .esp> [<optional plugin .esp>]
+
+The third path, when given, receives "YsgramorsArmor - No Companions requirement.esp" (1.1.0): one
+override of the mod's seal global, so the tomb opens without the Companions questline.
 
 WHY THIS SHAPE (the owner, 2026-09-10)
     "were making this mod as a patch that merges into the ysgramors armor mod so theres not
@@ -211,6 +214,17 @@ RETIRED_IDS      = (0x81B,)      # 1.0.1's AR_YsgramorTombGateMarker - never reu
 PLAYER_ALIAS_ID     = 0
 PLAYER_ALIAS_SCRIPT = b"YsgramorsArmorTombPlayer"   # YsgramorsArmorTombPlayer.psc beside this file
 PLAYER_REF          = 0x00000014                    # PlayerRef (Skyrim.esm)
+
+# 1.1.0: the tomb can open without the Companions questline (asked for on the Nexus page by a player
+# of a setting where the Companions are gone). One CONSTANT global of the mod's own holds the choice:
+# 1 in the main plugin (sealed until Glory of the Dead, as before), 0 in the optional plugin below,
+# which overrides only that global. Constant (record flag 0x40, as vanilla's
+# CrimeArrestOnSightViolentThreshold carries), so the value always comes from the loaded plugins and is
+# never frozen into a save - turning the optional plugin on or off works on an existing save too. Its
+# layout is vanilla's: EDID, FNAM 's' (short), FLTV float.
+SEAL_GLOBAL_EDID = b"AR_YsgramorTombSealUntilGlory\x00"
+FLAG_CONSTANT    = 0x00000040
+OPTIONAL_MASTER  = b"YsgramorsArmor.esp\x00"
 
 
 def wstr(s: bytes) -> bytes:
@@ -437,8 +451,10 @@ def build_tomb_quest(next_id: int, achr: bytes, achr_fid: int):
     """The quest that opens the tomb, and the holding cell the body waits in."""
     fid = next_id
     quest_id = fid; fid += 1
+    glob_id = fid + 1            # after the cell (0x821), so 1.0.x's ids keep their places: 0x822
     vmad = vmad_script(QUEST_SCRIPT, [
         (b"GloryOfTheDead",    "object", C06_QUEST),
+        (b"SealUntilGloryOfTheDead", "object", 0x04000000 | glob_id),
         (b"YsgramorsTomb",     "object", TOMB_CELL),
         (b"SarcophagusBottom", "object", SARCOPHAGUS_REF),
         (b"YsgramorBody",      "object", achr_fid),
@@ -480,7 +496,35 @@ def build_tomb_quest(next_id: int, achr: bytes, achr_fid: int):
     children = group(label, 6, group(label, 8, achr))          # persistent children
     cells = group(b"CELL", 0, group(struct.pack("<i", block), 2,
                                     group(struct.pack("<i", subblock), 3, cell + children)))
-    return group(b"QUST", 0, quest), cells, fid
+
+    if fid != glob_id:
+        raise SystemExit(f"the seal global was promised 0x{glob_id:X} but the next id is 0x{fid:X}")
+    fid += 1
+    glob = group(b"GLOB", 0, seal_global(0x04000000 | glob_id, 1.0))
+    return group(b"QUST", 0, quest), cells + glob, fid, glob_id
+
+
+def seal_global(formid: int, value: float) -> bytes:
+    """AR_YsgramorTombSealUntilGlory: 1 = sealed until Glory of the Dead, 0 = open from the start."""
+    return record(b"GLOB", formid, sub(b"EDID", SEAL_GLOBAL_EDID) + sub(b"FNAM", b"s") +
+                  sub(b"FLTV", struct.pack("<f", value)), flags=FLAG_CONSTANT)
+
+
+def write_optional_plugin(dst: str, glob_id: int, hedr_version: float) -> None:
+    """The optional plugin "YsgramorsArmor - No Companions requirement.esp": one master
+    (YsgramorsArmor.esp) and one record, the seal global overridden to 0. Light-flagged (0x200) - it
+    adds no form of its own. Its count is 2: the record and its group."""
+    body = group(b"GLOB", 0, seal_global(glob_id & 0x00FFFFFF, 0.0))   # index 00 = its one master
+    tes4 = (sub(b"HEDR", struct.pack("<fiI", hedr_version, 2, 0x800)) +
+            sub(b"CNAM", b"ApocryphaRealm\x00") +
+            sub(b"SNAM", b"Ysgramor's Armor addon: open Ysgramor's tomb without the Companions "
+                         b"questline.\x00") +
+            sub(b"MAST", OPTIONAL_MASTER) + sub(b"DATA", struct.pack("<Q", 0)))
+    out = record(b"TES4", 0, tes4, flags=0x200) + body
+    with open(dst, "wb") as f:
+        f.write(out)
+    print(f"wrote {dst}  ({len(out):,} bytes): GLOB 0x{glob_id & 0x00FFFFFF:06X} "
+          f"{SEAL_GLOBAL_EDID[:-1].decode()} = 0")
 
 
 # --- the corpse rendered NAKED even with DraugrRace in every additional-race list ------------
@@ -674,7 +718,7 @@ def walk_output(blob: bytes, n_masters: int):
     return total, bad
 
 
-def main(src: str, dst: str) -> int:
+def main(src: str, dst: str, optional_dst: str = None) -> int:
     print("verifying condition layout:")
     verify_conditions()
 
@@ -742,7 +786,7 @@ def main(src: str, dst: str) -> int:
     if armos != len(draugr_arma):
         raise SystemExit(f"attached {armos} armatures but built {len(draugr_arma)}")
 
-    quest_group, cell_group, fid = build_tomb_quest(fid, achr, achr_fid)
+    quest_group, cell_group, fid, glob_id = build_tomb_quest(fid, achr, achr_fid)
     if fid > 0xFFF:
         raise SystemExit(f"form ids would reach 0x{fid:X}, past the ESL range")
     print(f"  QUST AR_YsgramorTombQuest + CELL AR_YsgramorHoldingCell: the quest opens the tomb at run time "
@@ -772,10 +816,13 @@ def main(src: str, dst: str) -> int:
     for armo_fid, arma_fid, _ in draugr_arma:
         print(f"  ARMO 0x{armo_fid:08X} also resolves 0x{arma_fid:08X}, "
               f"an armature whose PRIMARY race is DraugrRace")
+    print(f"  GLOB 0x{0x04000000 | glob_id:08X} {SEAL_GLOBAL_EDID[:-1].decode()} = 1 (constant)")
+    if optional_dst:
+        write_optional_plugin(optional_dst, glob_id, version)
     return 0
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
-    sys.exit(main(sys.argv[1], sys.argv[2]))
+    sys.exit(main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None))
