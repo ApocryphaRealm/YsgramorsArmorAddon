@@ -623,6 +623,31 @@ def build_draugr_armatures(blob: bytes, next_fid: int):
     return made, next_fid
 
 
+SLOT_HAIR, SLOT_LONGHAIR = 1 << (31 - 30), 1 << (41 - 30)
+
+def add_long_hair_slot(rec: bytes) -> bytes:
+    """An ARMO that claims the Hair slot (31) also claims LongHair (41).
+
+    Why: the owner, 2026-11-11: "The Isgrimor armor helmet lets the hair clip through it." The helmet's
+    three armatures already claim Hair, LongHair, Circlet and Ears (31 41 42 43), but the original
+    helmet ARMO claims only 31 42 43 - and the ARMO's slots are what the game uses to hide or unequip
+    what is worn there, so long hair (and hair worn as an item on slot 41) stayed visible through it.
+    The first four bytes of BOD2 (BODT on an older form version) are the biped slot flags.
+    """
+    if struct.unpack_from("<I", rec, 8)[0] & 0x40000:
+        return rec                                      # compressed: leave it as the author wrote it
+    body = bytearray(rec[24:]); j = 0
+    while j + 6 <= len(body):
+        t = bytes(body[j:j + 4]); sz = struct.unpack_from("<H", body, j + 4)[0]
+        if t in (b"BOD2", b"BODT") and sz >= 4:
+            flags = struct.unpack_from("<I", body, j + 6)[0]
+            if flags & SLOT_HAIR and not flags & SLOT_LONGHAIR:
+                struct.pack_into("<I", body, j + 6, flags | SLOT_LONGHAIR)
+                return rec[:24] + bytes(body)
+            return rec
+        j += 6 + sz
+    return rec
+
 def add_draugr_race(blob: bytes, new_armatures=()):
     """Add DraugrRace to every ARMA's additional-race list.
 
@@ -656,6 +681,8 @@ def add_draugr_race(blob: bytes, new_armatures=()):
             continue
         rec = blob[i:i + 24 + size]
         rec_fid = struct.unpack_from("<I", blob, i + 12)[0]
+        if typ == b"ARMO":
+            rec = add_long_hair_slot(rec)
         if typ == b"ARMO" and rec_fid in by_armo:
             if struct.unpack_from("<I", blob, i + 8)[0] & 0x40000:
                 raise SystemExit(f"ARMO 0x{rec_fid:08X} is compressed - cannot append an armature")
