@@ -21,7 +21,7 @@ instances unless -SourcePlugin says otherwise; it is read, never written. The pa
 param(
     [string]$Version,
     [string]$SourcePlugin,
-    [string]$OutRoot = 'D:\Claude output\7. current test builds'
+    [string]$OutRoot = 'D:\Claude output\7. current test builds\Skyrim - Ysgramor''s Armor addon'   # where the pipeline reads it (was the parent folder: 1.1.0 landed beside, not in, the package root, 2026-11-11)
 )
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
