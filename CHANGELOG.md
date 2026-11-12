@@ -1,6 +1,6 @@
 # Changelog - Ysgramor's Armor addon
 
-## 1.1.0 - 2026-11-09 - untested
+## 1.1.0 - 2026-11-09 - working
 
 (1.0.2 was never posted; its changes are released as part of 1.1.0.)
 
